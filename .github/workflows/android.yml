@@ -19,13 +19,20 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    # فرض النسخة المستقرة وتجاوز مشكلة الملف المفقود
+    # فرض النسخة 8.5 وتجهيز البيئة بشكل كامل
     - name: Setup Gradle 8.5
       uses: gradle/actions/setup-gradle@v3
       with:
         gradle-version: 8.5
 
-    # تشغيل البناء مباشرة باستخدام Gradle المثبت
+    # تشغيل البناء مباشرة (بدون استخدام gradlew المفقود)
     - name: Build with Gradle
       run: gradle assembleDebug --no-daemon
-      
+
+    # رفع ملف الـ APK النهائي
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: TitanBot-App
+        path: app/build/outputs/apk/debug/*.apk
+        
