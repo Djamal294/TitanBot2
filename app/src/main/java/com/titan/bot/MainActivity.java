@@ -3,11 +3,7 @@ package com.titan.bot;
 import android.app.Activity;
 import android.os.Bundle;
 import android.os.Handler;
-import android.webkit.CookieManager;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
-import android.webkit.WebStorage;
+import android.webkit.*;
 import androidx.webkit.ProxyConfig;
 import androidx.webkit.ProxyController;
 import androidx.webkit.WebViewFeature;
@@ -17,12 +13,11 @@ import android.widget.TextView;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.net.URL;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
@@ -36,32 +31,11 @@ public class MainActivity extends Activity {
     
     private int visitCounter = 0;
     private int clickCounter = 0;
-    private String currentStatus = "Idle";
-    private String currentProxy = "Direct";
-    private String hunterStatus = "Ready";
     private boolean isBotRunning = false;
-
-    // قائمة البروكسيات الجاهزة
-    private CopyOnWriteArrayList<String> READY_TO_USE_PROXIES = new CopyOnWriteArrayList<>();
+    private String currentProxy = "Direct";
     
-    // --- تحديث: مصادر متنوعة تشمل SOCKS و HTTP ودول مختلفة ---
-    private String[] PROXY_SOURCES = {
-        "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
-        "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks4.txt",
-        "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt",
-        "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all.txt"
-    };
-
-    private String[] REFERRER_SOURCES = {
-        "https://www.google.com/", "https://www.bing.com/", "https://t.co/", 
-        "https://www.facebook.com/", "https://www.youtube.com/"
-    };
-
-    private String[] USER_AGENTS = {
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/121.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2_1) AppleWebKit/537.36",
-        "Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/UD1A.231105.004)"
-    };
+    // قائمة البروكسيات المفحوصة (النظيفة فقط)
+    private CopyOnWriteArrayList<String> VERIFIED_PROXIES = new CopyOnWriteArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -73,165 +47,140 @@ public class MainActivity extends Activity {
         controlButton = findViewById(R.id.controlButton);
         myBrowser = findViewById(R.id.myBrowser);
 
+        setupGologinSettings();
+        startAdvancedProxyHunter();
+    }
+
+    private void setupGologinSettings() {
         WebSettings s = myBrowser.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
-        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        
+        // محاكاة بصمة متصفح حقيقي (Gologin Concept)
+        String[] userAgents = {
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+        };
+        s.setUserAgentString(userAgents[random.nextInt(userAgents.length)]);
 
         myBrowser.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
                 if (isBotRunning) {
-                    injectTitanUltimatePatch();
-                    autoScrollBehavior();
-                    // محاولة الضغط على الأزرار الشائعة
-                    myBrowser.loadUrl("javascript:(function(){ " +
-                            "var b = document.querySelector('.g-recaptcha, #captcha-submit, .btn-primary, #confirm'); " +
-                            "if(b) b.click(); " +
-                            "})()");
-                    handler.postDelayed(() -> decideAndClick(), 15000);
+                    // سكرول متذبذب (محاكاة بشرية)
+                    handler.postDelayed(() -> {
+                        int scroll = 200 + random.nextInt(500);
+                        myBrowser.loadUrl("javascript:window.scrollBy({top: "+scroll+", behavior: 'smooth'});");
+                    }, 3000 + random.nextInt(4000));
+
+                    // نقرات ضئيلة جداً (فرصة 5% فقط) لتجنب كشف أدسنس
+                    if (random.nextInt(100) < 5) {
+                        handler.postDelayed(() -> {
+                            myBrowser.loadUrl("javascript:(function(){ " +
+                                "var ads = document.querySelectorAll('iframe, a[href*=\"ad\"]'); " +
+                                "if(ads.length > 0) ads[0].click(); " +
+                                "})()");
+                            clickCounter++;
+                            updateUI();
+                        }, 15000 + random.nextInt(20000));
+                    }
+                }
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (isBotRunning && request.isForMainFrame()) {
+                    // إذا فشل التحميل، انتقل فوراً لبروكسي آخر
+                    startNewSession();
                 }
             }
         });
 
         controlButton.setOnClickListener(v -> toggleBot());
-        startFastProxyHunter();
-    }
-
-    // --- ميزة دعم جميع أنواع البروكسيات ---
-    private void applyProxy(String proxyStr) {
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
-            // التحقق من نوع البروكسي (إذا كان المصدر يوفر البروتوكول، وإلا نعتبره HTTP)
-            String proxyUrl = proxyStr;
-            if (!proxyUrl.contains("://")) {
-                proxyUrl = "http://" + proxyStr; // افتراضي
-            }
-
-            ProxyConfig proxyConfig = new ProxyConfig.Builder()
-                    .addProxyRule(proxyUrl) 
-                    .addProxyRule("https://" + proxyStr)
-                    .addProxyRule("socks4://" + proxyStr)
-                    .addProxyRule("socks5://" + proxyStr)
-                    .addDirect() // العودة للاتصال المباشر في حال فشل البروكسي
-                    .build();
-            
-            ProxyController.getInstance().setProxyOverride(proxyConfig, command -> {}, () -> {});
-        }
     }
 
     private void startNewSession() {
         if (!isBotRunning) return;
-
-        // تنظيف الجلسة
+        
         CookieManager.getInstance().removeAllCookies(null);
-        WebStorage.getInstance().deleteAllData();
-
-        // اختيار بروكسي مع ميزة Geo-targeting بسيطة (اختيار عشوائي من المخزن المتنوع)
-        if (!READY_TO_USE_PROXIES.isEmpty()) {
-            currentProxy = READY_TO_USE_PROXIES.remove(0);
+        
+        if (!VERIFIED_PROXIES.isEmpty()) {
+            currentProxy = VERIFIED_PROXIES.remove(0);
             applyProxy(currentProxy);
         }
 
-        myBrowser.getSettings().setUserAgentString(USER_AGENTS[random.nextInt(USER_AGENTS.length)]);
-
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Referer", REFERRER_SOURCES[random.nextInt(REFERRER_SOURCES.length)]);
+        String url = linkInput.getText().toString();
+        if (!url.startsWith("http")) url = "https://" + url;
 
         visitCounter++;
-        currentStatus = "🌐 New Session: " + currentProxy;
         updateUI();
+        myBrowser.loadUrl(url);
 
-        myBrowser.loadUrl(linkInput.getText().toString(), headers);
-        
-        // توقيت عشوائي بين الزيارات لكسر النمط
-        handler.postDelayed(this::startNewSession, 45000 + random.nextInt(90000));
+        // مؤقت متذبذب للزيارة القادمة (بين 50 و 130 ثانية)
+        int delay = 50000 + random.nextInt(80000);
+        handler.postDelayed(this::startNewSession, delay);
     }
 
-    private void startFastProxyHunter() {
-        ExecutorService executor = Executors.newFixedThreadPool(5);
-        new Thread(() -> {
+    private void startAdvancedProxyHunter() {
+        Executors.newSingleThreadExecutor().execute(() -> {
             while (true) {
-                if (READY_TO_USE_PROXIES.size() < 50) {
-                    hunterStatus = "🚀 Hunter Active";
-                    updateUI();
-                    for (String source : PROXY_SOURCES) {
-                        executor.execute(() -> {
-                            try {
-                                HttpURLConnection c = (HttpURLConnection) new URL(source).openConnection();
-                                c.setConnectTimeout(8000);
-                                BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream()));
-                                String l;
-                                while ((l = r.readLine()) != null) {
-                                    l = l.trim();
-                                    if (l.contains(":") && !READY_TO_USE_PROXIES.contains(l)) {
-                                        // هنا يمكن إضافة فلتر للدول إذا كان المصدر يوفرها (مثل: US, GB)
-                                        READY_TO_USE_PROXIES.add(l);
-                                    }
-                                }
-                            } catch (Exception e) {}
-                        });
+                try {
+                    URL url = new URL("https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt");
+                    BufferedReader r = new BufferedReader(new InputStreamReader(url.openStream()));
+                    String line;
+                    while ((line = r.readLine()) != null) {
+                        if (line.contains(":") && VERIFIED_PROXIES.size() < 100) {
+                            validateAndAddProxy(line.trim());
+                        }
                     }
-                }
-                try { Thread.sleep(60000); } catch (Exception e) {}
+                } catch (Exception e) {}
+                try { Thread.sleep(600000); } catch (InterruptedException e) {}
             }
-        }).start();
+        });
     }
 
-    private void injectTitanUltimatePatch() {
-        // إخفاء هوية المتصفح المتقدم
-        String js = "javascript:(function() {" +
-                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});" +
-                "Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});" +
-                "window.chrome = { runtime: {} };" +
-                "const getParameter = WebGLRenderingContext.getParameter;" +
-                "WebGLRenderingContext.prototype.getParameter = function(parameter) {" +
-                "if (parameter === 37445) return 'Intel Inc.';" +
-                "if (parameter === 37446) return 'Intel(R) Iris(R) Xe Graphics';" +
-                "return getParameter(parameter); };" +
-                "})()";
-        myBrowser.loadUrl(js);
+    // فحص البروكسي قبل استخدامه والتخلص من المعطل
+    private void validateAndAddProxy(String proxyAddr) {
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                String[] parts = proxyAddr.split(":");
+                Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(parts[0], Integer.parseInt(parts[1])));
+                HttpURLConnection conn = (HttpURLConnection) new URL("https://www.google.com").openConnection(proxy);
+                conn.setConnectTimeout(3000);
+                conn.connect();
+                if (conn.getResponseCode() == 200) {
+                    VERIFIED_PROXIES.add(proxyAddr);
+                    updateUI();
+                }
+            } catch (Exception e) {
+                // البروكسي معطل، لا يتم إضافته (يتخلص منه البوت تلقائياً)
+            }
+        });
     }
 
-    private void decideAndClick() {
-        if (random.nextInt(100) < 7) { 
-            myBrowser.loadUrl("javascript:(function(){ " +
-                    "var ads = document.querySelectorAll('iframe, ins, a[href*=\"googleads\"], a[href*=\"doubleclick\"], a[href*=\"adservice\"]'); " +
-                    "if(ads.length > 0) ads[Math.floor(Math.random()*ads.length)].click(); " +
-                    "})()");
-            clickCounter++;
-            currentStatus = "🎯 Ad Clicked!";
+    private void applyProxy(String p) {
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+            ProxyConfig config = new ProxyConfig.Builder().addProxyRule(p).addDirect().build();
+            ProxyController.getInstance().setProxyOverride(config, r -> {}, () -> {});
         }
-        updateUI();
-    }
-
-    private void autoScrollBehavior() {
-        // تمرير بطريقة أكثر سلاسة وعشوائية
-        handler.postDelayed(() -> {
-            int scrollAmount = 300 + random.nextInt(700);
-            myBrowser.loadUrl("javascript:window.scrollBy({top: " + scrollAmount + ", behavior: 'smooth'});");
-        }, 3000);
     }
 
     private void toggleBot() {
         isBotRunning = !isBotRunning;
-        if (isBotRunning) {
-            controlButton.setText("STOP");
-            startNewSession();
-        } else {
-            controlButton.setText("START");
+        controlButton.setText(isBotRunning ? "STOP TITAN" : "LAUNCH TITAN BOT");
+        if (isBotRunning) startNewSession();
+        else {
             myBrowser.loadUrl("about:blank");
-            if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
-                ProxyController.getInstance().clearProxyOverride(command -> {}, () -> {});
-            }
+            handler.removeCallbacksAndMessages(null);
         }
     }
 
     private void updateUI() {
         runOnUiThread(() -> {
-            dashboardView.setText("📊 Visits: " + visitCounter + " | Clicks: " + clickCounter + 
-                                 "\n📡 Type: HTTP/SOCKS | 📦 Vault: " + READY_TO_USE_PROXIES.size() +
-                                 "\n📍 Current: " + currentProxy);
+            dashboardView.setText("🛡️ Mode: Gologin Stealth\n📊 Visits: " + visitCounter + " | Clicks: " + clickCounter + 
+                                 "\n🌐 Proxy: " + currentProxy + " | Verified Vault: " + VERIFIED_PROXIES.size());
         });
     }
-                          }
+            }
