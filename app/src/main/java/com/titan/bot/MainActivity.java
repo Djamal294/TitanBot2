@@ -22,22 +22,16 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-
     private WebView myBrowser;
     private Button controlButton;
     private EditText linkInput, manualProxyInput;
     private TextView dashboardView;
     private Switch proxyModeSwitch;
-    
     private Handler handler = new Handler();
     private Random random = new Random();
-    
-    private int visitCounter = 0;
-    private int clickCounter = 0;
+    private int visitCounter = 0, clickCounter = 0;
     private boolean isBotRunning = false;
     private String currentProxy = "Direct";
-    
-    // مخزن البروكسيات المفحوصة (AI Verified Vault)
     private CopyOnWriteArrayList<String> VERIFIED_PROXIES = new CopyOnWriteArrayList<>();
 
     @Override
@@ -45,7 +39,6 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // ربط جميع العناصر بالواجهة
         dashboardView = findViewById(R.id.dashboardView);
         linkInput = findViewById(R.id.linkInput);
         manualProxyInput = findViewById(R.id.manualProxyInput);
@@ -54,7 +47,7 @@ public class MainActivity extends Activity {
         myBrowser = findViewById(R.id.myBrowser);
 
         setupTitanEngine();
-        startProxyHunterAndChecker(); // البوت الثاني المدمج للفحص
+        startProxySystem();
     }
 
     private void setupTitanEngine() {
@@ -62,138 +55,125 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
-        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW); // حل الشاشة البيضاء
+        s.setCacheMode(WebSettings.LOAD_DEFAULT); // السماح بالتحميل من الإنترنت دوماً
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         
-        // محاكاة بصمة متصفح Gologin Stealth
-        s.setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+        // محاكاة متصفح حقيقي متطور
+        s.setUserAgentString("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36");
 
         myBrowser.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
                 if (isBotRunning) {
-                    // سكرول بشري بطيء جداً (AI Scroll)
+                    // سكرول بشري هادئ جداً بعد تحميل الصفحة بـ 10 ثوانٍ
                     handler.postDelayed(() -> {
-                        myBrowser.loadUrl("javascript:window.scrollBy({top: 450, behavior: 'smooth'});");
+                        myBrowser.loadUrl("javascript:window.scrollBy({top: 500, behavior: 'smooth'});");
                     }, 10000 + random.nextInt(5000));
-
-                    // تقليل النقرات: احتمال 1% فقط وتوقيت متأخر جداً (أمان فائق)
-                    if (random.nextInt(100) < 1) { 
-                        handler.postDelayed(() -> {
-                            myBrowser.loadUrl("javascript:(function(){ " +
-                                "var ads = document.querySelectorAll('iframe, a[href*=\"ad\"]'); " +
-                                "if(ads.length > 0) ads[0].click(); " +
-                                "})()");
-                            clickCounter++;
-                            updateUI();
-                        }, 50000 + random.nextInt(40000)); // النقر بعد دقيقة تقريباً
-                    }
                 }
             }
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                // إذا فشل الاتصال بالإنترنت، انتظر قليلاً ثم جرب بروكسي آخر (Self-Healing)
                 if (isBotRunning && request.isForMainFrame()) {
-                    // تغيير البروكسي فوراً عند فشل الاتصال (Self-Healing)
-                    startNewSession();
+                    handler.postDelayed(() -> startNewSession(), 5000);
                 }
             }
         });
-
-        controlButton.setOnClickListener(v -> toggleBotStatus());
+        controlButton.setOnClickListener(v -> toggleBot());
     }
 
     private void startNewSession() {
         if (!isBotRunning) return;
         
-        // تنظيف البيانات لضمان عدم التعقب
+        // تنظيف شامل لمنع التتبع الرقمي
         CookieManager.getInstance().removeAllCookies(null);
         WebStorage.getInstance().deleteAllData();
 
-        // منطق اختيار البروكسي (يدوي أولاً أو تلقائي مفحوص)
+        // منطق البروكسي الهجين (يدوي/تلقائي)
         if (proxyModeSwitch.isChecked() && !manualProxyInput.getText().toString().isEmpty()) {
-            String[] manualList = manualProxyInput.getText().toString().split("\n");
-            currentProxy = manualList[random.nextInt(manualList.length)].trim();
-        } 
-        else if (!VERIFIED_PROXIES.isEmpty()) {
+            String[] list = manualProxyInput.getText().toString().split("\n");
+            currentProxy = list[random.nextInt(list.length)].trim();
+        } else if (!VERIFIED_PROXIES.isEmpty()) {
             currentProxy = VERIFIED_PROXIES.remove(0);
         } else {
-            currentProxy = "Direct (No Proxy)";
+            currentProxy = "Direct (Searching...)";
         }
-
+        
         applyProxy(currentProxy);
 
-        String targetUrl = linkInput.getText().toString();
-        if (!targetUrl.startsWith("http")) targetUrl = "https://" + targetUrl;
+        // تصحيح الرابط لمنع تحميل الملفات المحلية الخاطئة
+        String url = linkInput.getText().toString().trim();
+        if (url.isEmpty() || url.contains("emulated")) {
+            url = "https://www.google.com"; // رابط افتراضي إذا كان المدخل خاطئاً
+        } else if (!url.startsWith("http")) {
+            url = "https://" + url;
+        }
 
         visitCounter++;
         updateUI();
-        myBrowser.loadUrl(targetUrl);
+        myBrowser.loadUrl(url);
 
-        // --- المؤقت المتذبذب البطيء (بين 2 إلى 4 دقائق لكل زيارة) ---
-        int slowDelay = 120000 + random.nextInt(120000); 
-        handler.postDelayed(this::startNewSession, slowDelay);
+        // --- تهدئة السرعة: إرسال زيارة واحدة كل 150 إلى 300 ثانية (2.5 - 5 دقائق) ---
+        int humanDelay = 150000 + random.nextInt(150000); 
+        handler.removeCallbacksAndMessages(null);
+        handler.postDelayed(this::startNewSession, humanDelay);
     }
 
-    private void applyProxy(String proxyStr) {
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE) && !proxyStr.contains("Direct")) {
-            ProxyConfig config = new ProxyConfig.Builder().addProxyRule(proxyStr).addDirect().build();
+    private void applyProxy(String p) {
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE) && !p.contains("Direct")) {
+            ProxyConfig config = new ProxyConfig.Builder().addProxyRule(p).addDirect().build();
             ProxyController.getInstance().setProxyOverride(config, r -> {}, () -> {});
         }
     }
 
-    private void startProxyHunterAndChecker() {
+    private void startProxySystem() {
         Executors.newSingleThreadExecutor().execute(() -> {
-            String[] sources = {
-                "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
-                "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt"
-            };
             while (true) {
-                for (String src : sources) {
-                    try {
-                        BufferedReader r = new BufferedReader(new InputStreamReader(new URL(src).openStream()));
-                        String l;
-                        while ((l = r.readLine()) != null) {
-                            if (l.contains(":") && VERIFIED_PROXIES.size() < 100) {
-                                validateProxy(l.trim());
-                            }
-                        }
-                    } catch (Exception e) {}
-                }
-                try { Thread.sleep(300000); } catch (Exception e) {}
+                try {
+                    // سحب بروكسيات جديدة من مصادر عالمية
+                    URL url = new URL("https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt");
+                    BufferedReader r = new BufferedReader(new InputStreamReader(url.openStream()));
+                    String l;
+                    while ((l = r.readLine()) != null) {
+                        if (l.contains(":") && VERIFIED_PROXIES.size() < 100) validate(l.trim());
+                    }
+                    Thread.sleep(600000); // تحديث كل 10 دقائق
+                } catch (Exception e) {}
             }
         });
     }
 
-    private void validateProxy(String addr) {
+    private void validate(String a) {
         Executors.newSingleThreadExecutor().execute(() -> {
             try {
-                String[] p = addr.split(":");
+                String[] p = a.split(":");
                 Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(p[0], Integer.parseInt(p[1])));
                 HttpURLConnection c = (HttpURLConnection) new URL("https://www.google.com").openConnection(proxy);
-                c.setConnectTimeout(3000);
-                c.connect();
+                c.setConnectTimeout(5000); // زيادة المهلة للبروكسيات البعيدة
                 if (c.getResponseCode() == 200) {
-                    VERIFIED_PROXIES.add(addr);
+                    VERIFIED_PROXIES.add(a);
                     updateUI();
                 }
             } catch (Exception e) {}
         });
     }
 
-    private void toggleBotStatus() {
+    private void toggleBot() {
         isBotRunning = !isBotRunning;
         controlButton.setText(isBotRunning ? "STOP TITAN" : "LAUNCH TITAN BOT");
-        if (isBotRunning) startNewSession();
-        else {
+        if (isBotRunning) {
+            startNewSession();
+        } else {
             myBrowser.loadUrl("about:blank");
             handler.removeCallbacksAndMessages(null);
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+                ProxyController.getInstance().clearProxyOverride(r -> {}, () -> {});
+            }
         }
     }
 
     private void updateUI() {
-        runOnUiThread(() -> {
-            dashboardView.setText("🛡️ Mode: Gologin Stealth\n📊 Visits: " + visitCounter + " | Clicks: " + clickCounter + 
-                                 "\n🌐 Current: " + currentProxy + " | Verified Vault: " + VERIFIED_PROXIES.size());
-        });
+        runOnUiThread(() -> dashboardView.setText("🛡️ Mode: Gologin Stealth\n📊 Visits: " + visitCounter + " | Clicks: " + clickCounter + "\n🌐 Proxy: " + currentProxy + " | Verified Vault: " + VERIFIED_PROXIES.size()));
     }
-}
+            }
