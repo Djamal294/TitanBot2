@@ -183,4 +183,4 @@ public class MainActivity extends Activity {
                                  "\n🌐 Proxy: " + currentProxy + " | Verified Vault: " + VERIFIED_PROXIES.size());
         });
     }
-            }
+}
