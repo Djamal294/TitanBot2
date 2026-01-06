@@ -14,8 +14,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: 3. Build APK with Gradle
-        run: gradle assembleDebug --no-daemon
+      - name: 3. Setup Gradle and Build
+        # هذا السطر سيقوم بإنشاء ملفات البناء المفقودة وتشغيلها فوراً
+        run: |
+          gradle wrapper
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
       - name: 4. Upload APK Artifact
         uses: actions/upload-artifact@v4
