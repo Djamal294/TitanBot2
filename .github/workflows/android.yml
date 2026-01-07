@@ -10,22 +10,18 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: 8.5 # إصدار مستقر يضمن التوافق
-
+          gradle-version: 8.5
       - name: Build with Gradle
         run: |
-          if [ ! -f gradlew ]; then
-            gradle wrapper # إنشاء ملف التشغيل المفقود تلقائياً
-          fi
+          gradle wrapper # هذا الأمر سيحل مشكلة No such file or directory
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Titan-Zenith-V5
           path: app/build/outputs/apk/debug/app-debug.apk
+          
