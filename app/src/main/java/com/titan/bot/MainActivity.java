@@ -34,7 +34,6 @@ public class MainActivity extends Activity {
     private LinearLayout webContainer;
     
     private Handler mHandler = new Handler(Looper.getMainLooper());
-    // تطوير الخوادم: 1000 خيط فحص لزيادة الكمية فوراً
     private ExecutorService scrapExec = Executors.newFixedThreadPool(200); 
     private ExecutorService validExec = Executors.newFixedThreadPool(1000); 
     
@@ -50,14 +49,14 @@ public class MainActivity extends Activity {
         try {
             setContentView(R.layout.activity_main);
             
-            // حل مشكلة "التجمد": ننتظر نصف ثانية لضمان بناء الواجهة قبل تشغيل الكود
+            // حل مشكلة الانهيار: ننتظر استقرار الواجهة قبل ربط العناصر
             mHandler.postDelayed(() -> {
                 try {
-                    // إعداد نظام العمل في الخلفية لمنع خمول المعالج
+                    // إعداد نظام الخلفية
                     PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
                     wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::Run");
 
-                    // ربط العناصر بالواجهة (XML)
+                    // ربط العناصر
                     dashView = findViewById(R.id.dashboardView);
                     aiStatusView = findViewById(R.id.aiStatusView);
                     serverCountView = findViewById(R.id.serverCountView);
@@ -65,34 +64,25 @@ public class MainActivity extends Activity {
                     controlBtn = findViewById(R.id.controlButton);
                     webContainer = findViewById(R.id.webContainer);
 
-                    // تفعيل الكوكيز للأرباح
-                    CookieManager.getInstance().setAcceptCookie(true);
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                        CookieManager.getInstance().setAcceptThirdPartyCookies(null, true);
+                    if (webContainer != null) {
+                        web1 = initWeb(); web2 = initWeb(); web3 = initWeb();
+                        setupTripleLayout();
+                        startMegaScraping(); 
+                        controlBtn.setOnClickListener(v -> toggleZenithV5());
+                        aiStatusView.setText("🤖 AI Intel: System Stabilized");
                     }
-
-                    // بناء البوتات الثلاثة
-                    web1 = initWeb(); web2 = initWeb(); web3 = initWeb();
-                    setupTripleLayout();
-                    
-                    // جلب الخوادم فوراً
-                    startMegaScraping(); 
-                    
-                    controlBtn.setOnClickListener(v -> toggleZenithV5());
-                    
-                    aiStatusView.setText("🤖 AI Intel: System Ready");
                 } catch (Exception e) {
                     Toast.makeText(this, "UI Binding Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 }
-            }, 500);
+            }, 1000); // تأخير ثانية واحدة لضمان بناء الـ XML بالكامل
 
         } catch (Exception e) {
-            Toast.makeText(this, "Fatal Init: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Fatal Launch Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
     private void setupTripleLayout() {
-        if (webContainer == null) return;
+        if (webContainer == null || web1 == null) return;
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
         web1.setLayoutParams(p); web2.setLayoutParams(p); web3.setLayoutParams(p);
         webContainer.addView(web1); webContainer.addView(web2); webContainer.addView(web3);
@@ -108,22 +98,21 @@ public class MainActivity extends Activity {
         wv.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView v, String url) {
-                // ذكاء اصطناعي مطور لكسر حماية المواقع الصعبة
+                // ذكاء اصطناعي مطور لكسر حماية المواقع
                 v.evaluateJavascript("(function(){" +
                     "Object.defineProperty(navigator,'webdriver',{get:()=>false});" +
                     "Object.defineProperty(navigator,'languages',{get:()=>['en-US','en','ar']});" +
-                    "window.scrollTo(0, "+rnd.nextInt(800)+");" +
-                    "setInterval(function(){ window.scrollBy(0, "+(rnd.nextBoolean()?25:-20)+"); }, 2500);" +
+                    "window.scrollTo(0, "+rnd.nextInt(1000)+");" +
+                    "setInterval(function(){ window.scrollBy(0, "+(rnd.nextBoolean()?20:-15)+"); }, 3000);" +
                     "document.body.click();" + 
                     "})()", null);
-                mHandler.post(() -> aiStatusView.setText("🤖 AI Intel: Bypass Active"));
+                mHandler.post(() -> aiStatusView.setText("🤖 AI Intel: Traffic Authenticated"));
             }
 
             @Override
             public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
-                // إذا فشل البروكسي، يسحب بروكسي جديد فوراً
                 if (isRunning && req.isForMainFrame()) {
-                    mHandler.post(() -> runSingleBot(v)); 
+                    mHandler.post(() -> runSingleBot(v));
                 }
             }
         });
@@ -137,16 +126,16 @@ public class MainActivity extends Activity {
         if (isRunning) {
             if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
             runSingleBot(web1);
-            mHandler.postDelayed(() -> runSingleBot(web2), 1000);
-            mHandler.postDelayed(() -> runSingleBot(web3), 2000);
+            mHandler.postDelayed(() -> runSingleBot(web2), 1500);
+            mHandler.postDelayed(() -> runSingleBot(web3), 3000);
         } else {
             if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         }
     }
 
     private void runSingleBot(WebView wv) {
-        if (!isRunning || PROXY_POOL.isEmpty()) {
-            if (isRunning) mHandler.postDelayed(() -> runSingleBot(wv), 2000);
+        if (!isRunning || PROXY_POOL.isEmpty() || wv == null) {
+            if (isRunning) mHandler.postDelayed(() -> runSingleBot(wv), 3000);
             return;
         }
 
@@ -160,17 +149,15 @@ public class MainActivity extends Activity {
             } catch (Exception e) {}
         }
 
-        // تمويه Gologin الحديث
         String[] agents = {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
         };
         wv.getSettings().setUserAgentString(agents[rnd.nextInt(agents.length)]);
         
         wv.loadUrl(linkIn.getText().toString().trim());
         totalJumps++;
         
-        // قفزات ذكية (كل 30-60 ثانية)
         mHandler.postDelayed(() -> runSingleBot(wv), (30 + rnd.nextInt(30)) * 1000);
     }
 
@@ -198,7 +185,7 @@ public class MainActivity extends Activity {
                         BufferedReader r = new BufferedReader(new InputStreamReader(u.openStream()));
                         String l;
                         while ((l = r.readLine()) != null) { if (l.contains(":")) validateProxy(l.trim()); }
-                        Thread.sleep(25000); 
+                        Thread.sleep(20000); 
                     } catch (Exception e) {}
                 }
             });
@@ -209,11 +196,10 @@ public class MainActivity extends Activity {
         validExec.execute(() -> {
             try {
                 String[] p = a.split(":");
-                // فحص البروكسي عبر الموقع المستهدف لضمان كسر الحماية
                 HttpURLConnection c = (HttpURLConnection) new URL("https://www.google.com").openConnection(
                     new Proxy(Proxy.Type.HTTP, new InetSocketAddress(p[0], Integer.parseInt(p[1])))
                 );
-                c.setConnectTimeout(400); 
+                c.setConnectTimeout(400);
                 if (c.getResponseCode() == 200) {
                     if (!PROXY_POOL.contains(a)) {
                         PROXY_POOL.add(a);
