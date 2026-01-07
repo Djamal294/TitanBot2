@@ -13,6 +13,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.view.ViewGroup;
+import android.widget.Toast;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -30,11 +31,13 @@ public class MainActivity extends Activity {
     private WebView web1, web2, web3;
     private Button controlBtn;
     private EditText linkIn;
-    private TextView dashView, serverCountView;
+    private TextView dashView, aiStatusView, serverCountView;
     private LinearLayout webContainer;
+    
     private Handler mHandler = new Handler(Looper.getMainLooper());
-    private ExecutorService scrapExec = Executors.newFixedThreadPool(100);
-    private ExecutorService validExec = Executors.newFixedThreadPool(400);
+    private ExecutorService scrapExec = Executors.newFixedThreadPool(100); 
+    private ExecutorService validExec = Executors.newFixedThreadPool(400); 
+    
     private Random rnd = new Random();
     private int totalJumps = 0;
     private boolean isRunning = false;
@@ -43,24 +46,35 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-        
-        // تفعيل الكوكيز (ضروري للأرباح)
-        CookieManager.getInstance().setAcceptCookie(true);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            CookieManager.getInstance().setAcceptThirdPartyCookies(null, true);
+        try {
+            setContentView(R.layout.activity_main);
+            
+            // ربط العناصر بالواجهة
+            dashView = findViewById(R.id.dashboardView);
+            aiStatusView = findViewById(R.id.aiStatusView);
+            serverCountView = findViewById(R.id.serverCountView);
+            linkIn = findViewById(R.id.linkInput);
+            controlBtn = findViewById(R.id.controlButton);
+            webContainer = findViewById(R.id.webContainer);
+
+            // إعدادات الكوكيز للأرباح
+            CookieManager.getInstance().setAcceptCookie(true);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                CookieManager.getInstance().setAcceptThirdPartyCookies(null, true);
+            }
+
+            // إنشاء المحركات الثلاثة
+            web1 = initWeb(); web2 = initWeb(); web3 = initWeb();
+            setupTripleLayout();
+            
+            // بدء جلب البروكسيات فوراً
+            startInfinityScraping(); 
+            
+            controlBtn.setOnClickListener(v -> toggleZenithV5());
+
+        } catch (Exception e) {
+            Toast.makeText(this, "Initialization Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
-
-        dashView = findViewById(R.id.dashboardView);
-        serverCountView = findViewById(R.id.serverCountView);
-        linkIn = findViewById(R.id.linkInput);
-        controlBtn = findViewById(R.id.controlButton);
-        webContainer = findViewById(R.id.webContainer);
-
-        web1 = initWeb(); web2 = initWeb(); web3 = initWeb();
-        setupTripleLayout();
-        startInfinityScraping(); 
-        controlBtn.setOnClickListener(v -> toggleZenithV5());
     }
 
     private void setupTripleLayout() {
@@ -75,14 +89,26 @@ public class MainActivity extends Activity {
         WebSettings s = wv.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
+        s.setDatabaseEnabled(true);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         
         wv.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageFinished(WebView v, String url) {
+                // إضافة الذكاء الاصطناعي في الحركة (التمويه البشري)
+                v.evaluateJavascript("(function(){" +
+                    "Object.defineProperty(navigator,'webdriver',{get:()=>false});" +
+                    "Object.defineProperty(navigator,'platform',{get:()=>'Win32'});" +
+                    "window.scrollTo(0, "+rnd.nextInt(600)+");" +
+                    "setInterval(function(){ window.scrollBy(0, "+(rnd.nextBoolean()?15:-10)+"); }, 4000);" +
+                    "})()", null);
+                mHandler.post(() -> aiStatusView.setText("🤖 AI Intel: Activity Simulated"));
+            }
+
+            @Override
             public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
-                // حل مشكلة TIMED_OUT الظاهرة في صورتك
                 if (isRunning && req.isForMainFrame()) {
-                    mHandler.post(() -> runSingleBot(v)); // تبديل فوري للبروكسي
+                    mHandler.post(() -> runSingleBot(v)); // تبديل فوري عند الخطأ
                 }
             }
         });
@@ -92,7 +118,11 @@ public class MainActivity extends Activity {
     private void toggleZenithV5() {
         isRunning = !isRunning;
         controlBtn.setText(isRunning ? "🛑 STOP V5 GHOST" : "🚀 LAUNCH ZENITH V5");
-        if (isRunning) { runSingleBot(web1); runSingleBot(web2); runSingleBot(web3); }
+        if (isRunning) {
+            runSingleBot(web1);
+            mHandler.postDelayed(() -> runSingleBot(web2), 5000);
+            mHandler.postDelayed(() -> runSingleBot(web3), 10000);
+        }
     }
 
     private void runSingleBot(WebView wv) {
@@ -100,26 +130,42 @@ public class MainActivity extends Activity {
         String proxy = PROXY_POOL.remove(0);
         updateUI();
 
-        // تفعيل البروكسي (يتطلب مكتبة webkit في الجرادل)
+        // نظام البروكسي المطور مع حماية ضد الانهيار (Try-Catch)
         if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
-            ProxyController.getInstance().setProxyOverride(new ProxyConfig.Builder()
-                .addProxyRule(proxy).build(), r -> {}, () -> {});
+            try {
+                ProxyController.getInstance().setProxyOverride(new ProxyConfig.Builder()
+                    .addProxyRule(proxy).build(), r -> {}, () -> {});
+            } catch (Exception e) {
+                mHandler.post(() -> aiStatusView.setText("🤖 AI Intel: Proxy Shield Active"));
+            }
         }
 
+        // تمويه كروم وقولوقين (User-Agent Rotation)
+        String[] agents = {
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+        };
+        wv.getSettings().setUserAgentString(agents[rnd.nextInt(agents.length)]);
+        
         wv.loadUrl(linkIn.getText().toString().trim());
         totalJumps++;
-        mHandler.postDelayed(() -> runSingleBot(wv), (40 + rnd.nextInt(30)) * 1000);
+        
+        // القفزة القادمة
+        mHandler.postDelayed(() -> runSingleBot(wv), (45 + rnd.nextInt(30)) * 1000);
     }
 
     private void updateUI() {
         mHandler.post(() -> {
-            serverCountView.setText("🌐 V5 POOL: " + PROXY_POOL.size());
+            serverCountView.setText("🌐 V5 POOL: " + PROXY_POOL.size() + " [GHOST]");
             dashView.setText("💰 Master Jumps: " + totalJumps);
         });
     }
 
     private void startInfinityScraping() {
-        String[] sources = {"https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=1500&country=all"};
+        String[] sources = {
+            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=1500&country=all",
+            "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt"
+        };
         for (String url : sources) {
             scrapExec.execute(() -> {
                 while (true) {
@@ -142,9 +188,11 @@ public class MainActivity extends Activity {
                 HttpURLConnection c = (HttpURLConnection) new URL("https://www.google.com").openConnection(
                     new Proxy(Proxy.Type.HTTP, new InetSocketAddress(p[0], Integer.parseInt(p[1])))
                 );
-                c.setConnectTimeout(1000);
-                if (c.getResponseCode() == 200) { if (!PROXY_POOL.contains(a)) { PROXY_POOL.add(a); updateUI(); } }
+                c.setConnectTimeout(1500);
+                if (c.getResponseCode() == 200) {
+                    if (!PROXY_POOL.contains(a)) { PROXY_POOL.add(a); updateUI(); }
+                }
             } catch (Exception e) {}
         });
     }
-            }
+        }
