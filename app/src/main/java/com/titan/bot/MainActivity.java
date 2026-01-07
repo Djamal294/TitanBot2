@@ -45,13 +45,13 @@ public class MainActivity extends Activity {
     private Random random = new Random();
     private int visitCounter = 0, clickCounter = 0;
     private boolean isBotRunning = false;
-    private String currentProxy = "Direct", currentCountry = "Safe Loading...";
+    private String currentProxy = "Direct", currentCountry = "Bypassing...";
     private CopyOnWriteArrayList<String> VERIFIED_PROXIES = new CopyOnWriteArrayList<>();
 
     private String[] DEVICE_PROFILES = {
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) Chrome/125.0.0.0 Mobile Safari/537.36",
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) Version/17.5 Mobile/15E148 Safari/604.1"
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
     };
 
     @Override
@@ -75,28 +75,23 @@ public class MainActivity extends Activity {
         WebSettings s = myBrowser.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
-        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        s.setDatabaseEnabled(true);
+        s.setAppCacheEnabled(true);
+        s.setCacheMode(WebSettings.LOAD_DEFAULT);
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         
         myBrowser.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
                 if (isBotRunning) {
-                    // ميزة 1: درع التخفي وحماية WebRTC
+                    // قتل WebRTC وتخفي Gologin
                     myBrowser.loadUrl("javascript:(function(){" +
                         "Object.defineProperty(navigator,'webdriver',{get:()=>false});" +
                         "var pc = window.RTCPeerConnection || window.webkitRTCPeerConnection;" +
                         "if(pc) pc.prototype.createOffer = function(){ return new Promise(function(res,rej){ rej(); }); };" +
                         "})()");
 
-                    // ميزة 2: كشف رسائل الحظر والتبديل التلقائي
-                    myBrowser.loadUrl("javascript:(function(){" +
-                        "var text = document.body.innerText;" +
-                        "if(text.includes('Anonymous') || text.includes('unusual traffic') || text.includes('Captcha')) {" +
-                        "   window.location.reload();" + // سيقوم النظام بالتبديل تلقائياً في الجلسة التالية
-                        "}" +
-                        "})()");
-                    
-                    // ميزة 3: النقر المتذبذب الذكي (3%-5%)
+                    // النقر المتذبذب الذكي
                     if (random.nextInt(100) < (3 + random.nextInt(3))) {
                         mainHandler.postDelayed(() -> {
                             myBrowser.loadUrl("javascript:(function(){" +
@@ -104,10 +99,20 @@ public class MainActivity extends Activity {
                                 "if(links.length > 0) links[Math.floor(Math.random()*links.length)].click();" +
                                 "})()");
                             clickCounter++;
-                            updateDashboard("🎯 Anti-Detect Click");
+                            updateDashboard("🎯 Bypass Click Applied");
                         }, 12000 + random.nextInt(8000));
                     }
-                    myBrowser.loadUrl("javascript:window.scrollBy({top: 500, behavior: 'smooth'});");
+                    myBrowser.loadUrl("javascript:window.scrollBy({top: 400, behavior: 'smooth'});");
+                }
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                // ميزة: إعادة المحاولة التلقائية عند فشل الرد (ERR_EMPTY_RESPONSE)
+                if (isBotRunning && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (error.getErrorCode() == ERROR_CONNECT || error.getErrorCode() == ERROR_TIMEOUT) {
+                        mainHandler.postDelayed(() -> startNewSession(), 2000);
+                    }
                 }
             }
         });
@@ -148,8 +153,8 @@ public class MainActivity extends Activity {
                 if (c.getResponseCode() == 200) {
                     JSONObject j = new JSONObject(new BufferedReader(new InputStreamReader(c.getInputStream())).readLine());
                     String org = j.optString("org", "").toLowerCase();
-                    // فلترة بروكسيات الشركات المكشوفة (مثل Azure/Microsoft) لضمان الأمان
-                    if (!org.contains("microsoft") && !org.contains("google") && !org.contains("amazon")) {
+                    // فلترة بروكسيات الشركات المكشوفة (مثل AWS و Azure)
+                    if (!org.contains("amazon") && !org.contains("microsoft") && !org.contains("google")) {
                         if (!VERIFIED_PROXIES.contains(addr)) {
                             VERIFIED_PROXIES.add(addr);
                             updateDashboard("");
@@ -163,6 +168,7 @@ public class MainActivity extends Activity {
     private void startNewSession() {
         if (!isBotRunning) return;
         CookieManager.getInstance().removeAllCookies(null);
+        CookieManager.getInstance().flush();
 
         if (proxyModeSwitch.isChecked() && !manualProxyInput.getText().toString().isEmpty()) {
             String[] list = manualProxyInput.getText().toString().split("\n");
@@ -185,13 +191,13 @@ public class MainActivity extends Activity {
         headers.put("Referer", "https://www.google.com/");
         myBrowser.loadUrl(url, headers);
 
-        // توقيت طويل (50-90 ثانية) لتجاوز حماية السلوك
+        // توقيت طويل (50-90 ثانية) لضمان تجاوز الفحص
         mainHandler.postDelayed(this::startNewSession, 50000 + random.nextInt(40000));
     }
 
     private void updateDashboard(String msg) {
         mainHandler.post(() -> {
-            String status = isBotRunning ? "🛡️ Mode: Anti-Captcha Active" : "⚡ Ready";
+            String status = isBotRunning ? "🛡️ Mode: Aggressive Bypass" : "⚡ Ready";
             dashboardView.setText(status + "\n📊 Visits: " + visitCounter + " | Clicks: " + clickCounter + 
                 "\n🌍 Geo: " + currentCountry + "\n🌐 Proxy: " + currentProxy + "\n📦 Pure Pool: " + VERIFIED_PROXIES.size());
         });
@@ -217,7 +223,7 @@ public class MainActivity extends Activity {
     private void toggleBot() {
         isBotRunning = !isBotRunning;
         controlButton.setText(isBotRunning ? "STOP TITAN" : "LAUNCH TITAN PRO");
-        if (isBotRunning) { startNewSession(); showNotification("TitanBot Stealth Running..."); }
+        if (isBotRunning) { startNewSession(); showNotification("TitanBot Bypass Mode..."); }
         else { mainHandler.removeCallbacksAndMessages(null); stopNotification(); }
     }
 
@@ -235,4 +241,4 @@ public class MainActivity extends Activity {
     }
 
     private void stopNotification() { ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE)).cancel(1); }
-            }
+                        }
