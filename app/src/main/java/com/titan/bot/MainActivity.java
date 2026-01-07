@@ -95,8 +95,9 @@ public class MainActivity extends Activity {
 
             @Override
             public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
+                // معالجة خطأ TIMED_OUT الظاهر في صورتك بإعادة المحاولة فوراً
                 if (isRunning && req.isForMainFrame()) {
-                    mHandler.post(() -> runSingleBot(v)); // إعادة المحاولة الفورية عند TIMED_OUT
+                    mHandler.post(() -> runSingleBot(v));
                 }
             }
         });
@@ -180,4 +181,4 @@ public class MainActivity extends Activity {
             } catch (Exception e) {}
         });
     }
-                                              }
+    }
