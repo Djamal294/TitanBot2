@@ -30,71 +30,44 @@ public class MainActivity extends Activity {
     private WebView web1, web2, web3;
     private Button controlBtn;
     private EditText linkIn;
-    private TextView dashView, aiStatusView;
+    private TextView dashView, aiStatusView, serverCountView; // أضفنا عداد الخوادم المنفصل
     private LinearLayout webContainer;
     
     private Handler mHandler = new Handler(Looper.getMainLooper());
-    private ExecutorService scrapExec = Executors.newFixedThreadPool(20); 
-    private ExecutorService validExec = Executors.newFixedThreadPool(60); 
-    private ExecutorService aiExec = Executors.newSingleThreadExecutor(); 
+    private ExecutorService scrapExec = Executors.newFixedThreadPool(25); 
+    private ExecutorService validExec = Executors.newFixedThreadPool(70); 
     
     private Random rnd = new Random();
     private int vCount = 0;
     private boolean isRunning = false;
     private CopyOnWriteArrayList<String> PROXY_POOL = new CopyOnWriteArrayList<>();
 
-    // مصفوفة هويات متصفحات متنوعة لكسر الحماية
-    private String[] AGENTS = {
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36"
-    };
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         
-        // تفعيل تسريع الرندر بالأجهزة لضمان ظهور الإعلان بسرعة
         getWindow().setFlags(16777216, 16777216); 
 
         dashView = findViewById(R.id.dashboardView);
         aiStatusView = findViewById(R.id.aiStatusView);
+        serverCountView = findViewById(R.id.serverCountView); // يظهر أعلى الشاشة
         linkIn = findViewById(R.id.linkInput);
         controlBtn = findViewById(R.id.controlButton);
         webContainer = findViewById(R.id.webContainer);
 
-        // بناء النوافذ الثلاثة
         web1 = initWeb(); web2 = initWeb(); web3 = initWeb();
         setupTripleLayout();
 
         startScraping();
-        controlBtn.setOnClickListener(v -> toggleEngine());
+        controlBtn.setOnClickListener(v -> toggleUltraEngine());
     }
 
     private void setupTripleLayout() {
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
-        p.setMargins(4, 4, 4, 4);
+        p.setMargins(2, 2, 2, 2);
         web1.setLayoutParams(p); web2.setLayoutParams(p); web3.setLayoutParams(p);
         webContainer.addView(web1); webContainer.addView(web2); webContainer.addView(web3);
-    }
-
-    // إضافة الذكاء الاصطناعي لفحص الحماية
-    private void runAIDiagnostic(String targetUrl) {
-        aiExec.execute(() -> {
-            try {
-                HttpURLConnection conn = (HttpURLConnection) new URL(targetUrl).openConnection();
-                conn.setConnectTimeout(5000);
-                conn.setRequestProperty("User-Agent", AGENTS[0]);
-                conn.connect();
-                String server = conn.getHeaderField("Server");
-                String info = (server != null && server.toLowerCase().contains("cloudflare")) ? 
-                    "⚠️ Cloudflare Found - Using Advanced Stealth" : "✅ Security Analyzed - Launching...";
-                mHandler.post(() -> aiStatusView.setText("🤖 AI Intel: " + info));
-            } catch (Exception e) {
-                mHandler.post(() -> aiStatusView.setText("🤖 AI Intel: Adaptive Mode Active"));
-            }
-        });
     }
 
     private WebView initWeb() {
@@ -103,71 +76,93 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
+        s.setSupportMultipleWindows(true);
+        s.setJavaScriptCanOpenWindowsAutomatically(true);
         s.setLoadsImagesAutomatically(true);
-        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        s.setMediaPlaybackRequiresUserGesture(false); // لتشغيل إعلانات الفيديو تلقائياً
         
         wv.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView v, String url) {
-                // دمج كسر حماية GoLogin و WebRTC وتزييف العتاد
+                // ميزة التفاعل الوهمي (Ghost Click) لإجبار الإعلان على الظهور
                 v.loadUrl("javascript:(function(){" +
                     "Object.defineProperty(navigator,'webdriver',{get:()=>false});" +
-                    "Object.defineProperty(navigator,'deviceMemory',{get:()=>8});" +
-                    "var pc = window.RTCPeerConnection || window.webkitRTCPeerConnection;" +
-                    "if(pc) pc.prototype.createOffer = function(){ return new Promise(function(res,rej){ rej(); }); };" +
-                    "window.scrollBy({top: 500, behavior: 'smooth'});" + // تحريك الصفحة لإجبار الإعلان
+                    "Object.defineProperty(navigator,'languages',{get:()=>['en-US','en']});" +
+                    "window.scrollTo(0, 200);" +
+                    "setTimeout(function(){ " +
+                    "   var ev = document.createEvent('MouseEvent');" +
+                    "   ev.initMouseEvent('click',true,true,window,0,0,0,0,0,false,false,false,false,0,null);" +
+                    "   document.body.dispatchEvent(ev);" + // نقرة وهمية لتنشيط السكربت
+                    "   window.scrollTo(0, 500);" +
+                    "}, 3000);" +
                     "})()");
             }
+            
             @Override
             public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
-                // التبديل الفوري عند الأخطاء (EMPTY_RESPONSE / Tunnel)
-                if (isRunning && req.isForMainFrame()) {
-                    mHandler.post(() -> runSingleBot(v));
-                }
+                if (isRunning && req.isForMainFrame()) mHandler.post(() -> runSingleBot(v));
             }
         });
         return wv;
     }
 
-    private void toggleEngine() {
+    private void toggleUltraEngine() {
+        if (PROXY_POOL.size() < 5 && !isRunning) {
+            aiStatusView.setText("🤖 AI: Waiting for more proxies...");
+            return;
+        }
+        
         isRunning = !isRunning;
-        controlBtn.setText(isRunning ? "🛑 STOP ALL SYSTEMS" : "🚀 LAUNCH ULTIMATE HYBRID");
+        controlBtn.setText(isRunning ? "🛑 STOP ATTACK" : "🚀 LAUNCH AD-MAX");
         if (isRunning) {
-            runAIDiagnostic(linkIn.getText().toString());
             runSingleBot(web1);
-            mHandler.postDelayed(() -> runSingleBot(web2), 7000);
-            mHandler.postDelayed(() -> runSingleBot(web3), 14000);
-        } else {
-            mHandler.removeCallbacksAndMessages(null);
+            mHandler.postDelayed(() -> runSingleBot(web2), 8000);
+            mHandler.postDelayed(() -> runSingleBot(web3), 16000);
         }
     }
 
     private void runSingleBot(WebView wv) {
-        if (!isRunning || PROXY_POOL.isEmpty()) return;
+        if (!isRunning) return;
+
+        // ميزة الإيقاف التلقائي عند نفاذ الخوادم
+        if (PROXY_POOL.isEmpty()) {
+            isRunning = false;
+            controlBtn.setText("🚀 RELOAD PROXIES");
+            aiStatusView.setText("⚠️ AI: System Halted - No Proxies Left");
+            return;
+        }
 
         String proxy = PROXY_POOL.remove(0);
+        updateServerUI();
+
         if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
             ProxyController.getInstance().setProxyOverride(new ProxyConfig.Builder().addProxyRule(proxy).build(), r -> {}, () -> {});
         }
 
-        wv.getSettings().setUserAgentString(AGENTS[rnd.nextInt(AGENTS.length)]);
+        wv.getSettings().setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36");
         
         Map<String, String> h = new HashMap<>();
-        h.put("Referer", "https://www.google.com/");
+        h.put("Accept-Language", "en-US,en;q=0.9");
+        h.put("Referer", "https://www.bing.com/"); // تغيير المصدر لزيادة الموثوقية
         
         wv.loadUrl(linkIn.getText().toString().trim(), h);
         vCount++;
-        dashView.setText("🔥 Hybrid Engine | Visits: " + vCount + " | Pool: " + PROXY_POOL.size());
-
-        // زمن عشوائي (20-40 ثانية) لضمان تحميل الإعلان بالكامل
-        int wait = (20 + rnd.nextInt(21)) * 1000;
-        mHandler.postDelayed(() -> runSingleBot(wv), wait);
+        dashView.setText("💰 Revenue Bot | Successful Jumps: " + vCount);
+        
+        // زمن أطول لضمان تفاعل السكربت (35-55 ثانية)
+        mHandler.postDelayed(() -> runSingleBot(wv), (35 + rnd.nextInt(21)) * 1000);
     }
 
-    // جلب البروكسيات العالمية المستمر
+    private void updateServerUI() {
+        mHandler.post(() -> serverCountView.setText("🌐 PROXY POOL: " + PROXY_POOL.size() + " [ONLINE]"));
+    }
+
     private void startScraping() {
-        String[] sources = {"https://api.proxyscrape.com/v2/?request=getproxies&protocol=http","https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt"};
+        String[] sources = {
+            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=10000&country=all",
+            "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
+            "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt"
+        };
         for (String url : sources) {
             scrapExec.execute(() -> {
                 while (true) {
@@ -176,7 +171,7 @@ public class MainActivity extends Activity {
                         BufferedReader r = new BufferedReader(new InputStreamReader(u.openStream()));
                         String l;
                         while ((l = r.readLine()) != null) { if (l.contains(":")) validate(l.trim()); }
-                        Thread.sleep(180000);
+                        Thread.sleep(120000);
                     } catch (Exception e) {}
                 }
             });
@@ -191,8 +186,13 @@ public class MainActivity extends Activity {
                     new Proxy(Proxy.Type.HTTP, new InetSocketAddress(p[0], Integer.parseInt(p[1])))
                 );
                 c.setConnectTimeout(4000);
-                if (c.getResponseCode() == 200) { if (!PROXY_POOL.contains(a)) PROXY_POOL.add(a); }
+                if (c.getResponseCode() == 200) { 
+                    if (!PROXY_POOL.contains(a)) {
+                        PROXY_POOL.add(a);
+                        updateServerUI();
+                    }
+                }
             } catch (Exception e) {}
         });
     }
-                          }
+}
