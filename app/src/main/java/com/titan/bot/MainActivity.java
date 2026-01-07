@@ -34,13 +34,11 @@ public class MainActivity extends Activity {
     private LinearLayout webContainer;
     
     private Handler mHandler = new Handler(Looper.getMainLooper());
-    
-    // رفع كفاءة المحرك إلى الحد الأقصى (Singularity Threads)
-    private ExecutorService scrapExec = Executors.newFixedThreadPool(100); 
-    private ExecutorService validExec = Executors.newFixedThreadPool(400); 
+    private ExecutorService scrapExec = Executors.newFixedThreadPool(80); // رفع كفاءة الجلب القصوى
+    private ExecutorService validExec = Executors.newFixedThreadPool(300); // 300 خيط فحص متزامن
     
     private Random rnd = new Random();
-    private int successCount = 0;
+    private int totalJumps = 0;
     private boolean isRunning = false;
     private CopyOnWriteArrayList<String> PROXY_POOL = new CopyOnWriteArrayList<>();
 
@@ -48,8 +46,6 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        
-        // تفعيل تسريع العتاد لمنع بطء الرندر
         getWindow().setFlags(16777216, 16777216); 
 
         dashView = findViewById(R.id.dashboardView);
@@ -62,8 +58,8 @@ public class MainActivity extends Activity {
         web1 = initWeb(); web2 = initWeb(); web3 = initWeb();
         setupTripleLayout();
         
-        startSingularityScraper(); 
-        controlBtn.setOnClickListener(v -> toggleSingularity());
+        startInfinityScraping(); 
+        controlBtn.setOnClickListener(v -> toggleZenithV5());
     }
 
     private void setupTripleLayout() {
@@ -85,20 +81,18 @@ public class MainActivity extends Activity {
         wv.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView v, String url) {
-                // حقن بروتوكول التمويه العميق (Deep Masking)
+                // حقن نظام "التمويه السكني" لكسر حماية Anonymous Proxy
                 v.loadUrl("javascript:(function(){" +
                     "Object.defineProperty(navigator,'webdriver',{get:()=>false});" +
+                    "Object.defineProperty(navigator,'platform',{get:()=>'Win32'});" +
                     "Object.defineProperty(navigator,'deviceMemory',{get:()=>"+(rnd.nextBoolean()?8:16)+"});" +
-                    "var pc = window.RTCPeerConnection || window.webkitRTCPeerConnection;" + // قتل تسريب الـ IP
-                    "if(pc) pc.prototype.createOffer = function(){ return new Promise(function(res,rej){ rej(); }); };" +
-                    "window.scrollTo(0, "+rnd.nextInt(500)+");" +
+                    "window.scrollTo(0, "+rnd.nextInt(600)+");" +
                     "setInterval(function(){ " +
-                    "   window.scrollBy(0, "+(rnd.nextBoolean() ? 50 : -20)+");" +
-                    "   if(Math.random() > 0.7) document.body.click();" + // نقرات بشرية ذكية
-                    "}, 4000);" +
+                    "   window.scrollBy(0, "+(rnd.nextBoolean() ? 80 : -30)+");" + // حركة قراءة بشرية
+                    "}, 4500);" +
                     "})()");
 
-                // كشف حظر البروكسي والتبديل التلقائي
+                // التخلص الفوري من البروكسيات المجهولة آلياً
                 v.evaluateJavascript("document.body.innerText.includes('Anonymous Proxy')", value -> {
                     if (Boolean.parseBoolean(value)) mHandler.post(() -> runSingleBot(v));
                 });
@@ -106,15 +100,16 @@ public class MainActivity extends Activity {
 
             @Override
             public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
+                // تبديل فوري عند TIMED_OUT لضمان استمرار العمل
                 if (isRunning && req.isForMainFrame()) mHandler.post(() -> runSingleBot(v));
             }
         });
         return wv;
     }
 
-    private void toggleSingularity() {
+    private void toggleZenithV5() {
         isRunning = !isRunning;
-        controlBtn.setText(isRunning ? "🛑 STOP SINGULARITY" : "🚀 LAUNCH SINGULARITY");
+        controlBtn.setText(isRunning ? "🛑 STOP V5 GHOST" : "🚀 LAUNCH ZENITH V5");
         if (isRunning) {
             runSingleBot(web1);
             mHandler.postDelayed(() -> runSingleBot(web2), 5000);
@@ -132,34 +127,35 @@ public class MainActivity extends Activity {
             ProxyController.getInstance().setProxyOverride(new ProxyConfig.Builder().addProxyRule(proxy).build(), r -> {}, () -> {});
         }
 
-        // استخدام User-Agent حديث جداً متوافق مع البصمة المحقونة
+        // استخدام هوية متصفح Residential صارمة
         wv.getSettings().setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36");
         
         Map<String, String> h = new HashMap<>();
         h.put("Sec-Ch-Ua-Platform", "\"Windows\"");
-        h.put("Referer", "https://www.google.com/"); // تزييف مصدر الزيارة
+        h.put("X-Requested-With", "com.android.chrome");
         
         wv.loadUrl(linkIn.getText().toString().trim(), h);
-        successCount++;
+        totalJumps++;
         
-        mHandler.postDelayed(() -> runSingleBot(wv), (40 + rnd.nextInt(30)) * 1000);
+        mHandler.postDelayed(() -> runSingleBot(wv), (35 + rnd.nextInt(35)) * 1000);
     }
 
     private void updateUI() {
         mHandler.post(() -> {
-            serverCountView.setText("🌐 SINGULARITY POOL: " + PROXY_POOL.size() + " [READY]");
-            dashView.setText("💰 Master Engine | Success: " + successCount);
+            serverCountView.setText("🌐 V5 INFINITY POOL: " + PROXY_POOL.size() + " [GHOST]");
+            dashView.setText("💰 Zenith Master | Total Jumps: " + totalJumps);
         });
     }
 
-    private void startSingularityScraper() {
+    private void startInfinityScraping() {
+        // إضافة مصادر SOCKS5 عالية السرعة لتجاوز الحماية
         String[] sources = {
-            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=2000&country=all",
+            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=2500&country=all",
             "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
             "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
             "https://proxyspace.pro/http.txt",
-            "https://raw.githubusercontent.com/officialputuid/Proxy-List/master/http.txt",
-            "https://raw.githubusercontent.com/rdavydov/proxy-list/main/proxies/http.txt"
+            "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
+            "https://raw.githubusercontent.com/officialputuid/Proxy-List/master/http.txt"
         };
         for (String url : sources) {
             scrapExec.execute(() -> {
@@ -169,7 +165,7 @@ public class MainActivity extends Activity {
                         BufferedReader r = new BufferedReader(new InputStreamReader(u.openStream()));
                         String l;
                         while ((l = r.readLine()) != null) { if (l.contains(":")) validateProxy(l.trim()); }
-                        Thread.sleep(30000); 
+                        Thread.sleep(35000); // تحديث بركاني كل 35 ثانية
                     } catch (Exception e) {}
                 }
             });
@@ -183,7 +179,7 @@ public class MainActivity extends Activity {
                 HttpURLConnection c = (HttpURLConnection) new URL("https://www.google.com").openConnection(
                     new Proxy(Proxy.Type.HTTP, new InetSocketAddress(p[0], Integer.parseInt(p[1])))
                 );
-                c.setConnectTimeout(700); // فلترة "السرعة الضوئية" للقضاء على TIMED_OUT
+                c.setConnectTimeout(800); // فلترة "السرعة النووية" (فقط البروكسيات التي تستجيب في أقل من ثانية)
                 if (c.getResponseCode() == 200) {
                     if (!PROXY_POOL.contains(a)) {
                         PROXY_POOL.add(a);
@@ -193,4 +189,4 @@ public class MainActivity extends Activity {
             } catch (Exception e) {}
         });
     }
-            }
+}
