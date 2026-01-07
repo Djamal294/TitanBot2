@@ -1,81 +1,62 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="#121212" 
-    android:padding="16dp">
+    android:background="#121212">
 
-    <androidx.cardview.widget.CardView
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:cardCornerRadius="15dp"
-        app:cardElevation="8dp"
-        app:cardBackgroundColor="#1E1E1E"
-        android:layout_marginBottom="12dp">
-        
+        android:orientation="vertical"
+        android:padding="16dp">
+
         <TextView
             android:id="@+id/dashboardView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="16dp"
-            android:text="Status: Running System\nVisits: 0 | Clicks: 0"
+            android:background="#1E1E1E"
+            android:padding="12dp"
+            android:text="🛡️ Titan Bot: Ready"
             android:textColor="#BB86FC"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-    </androidx.cardview.widget.CardView>
+            android:textSize="14sp" />
 
-    <EditText
-        android:id="@+id/linkInput"
-        android:layout_width="match_parent"
-        android:layout_height="50dp"
-        android:background="@drawable/edit_text_bg"
-        android:backgroundTint="#2C2C2C"
-        android:hint="Target URL (https://...)"
-        android:textColor="#FFFFFF"
-        android:textColorHint="#808080"
-        android:padding="12dp"
-        android:layout_marginBottom="8dp" />
+        <TextView
+            android:id="@+id/aiStatusView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="#252525"
+            android:padding="8dp"
+            android:text="🤖 AI Intel: Waiting for link..."
+            android:textColor="#03DAC6"
+            android:textSize="12sp" />
 
-    <EditText
-        android:id="@+id/manualProxyInput"
-        android:layout_width="match_parent"
-        android:layout_height="80dp"
-        android:background="@drawable/edit_text_bg"
-        android:backgroundTint="#2C2C2C"
-        android:hint="Paste Proxies (IP:Port)"
-        android:textColor="#FFFFFF"
-        android:textColorHint="#808080"
-        android:inputType="textMultiLine"
-        android:gravity="top"
-        android:padding="10dp"
-        android:layout_marginBottom="8dp" />
+        <EditText
+            android:id="@+id/linkInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:hint="Paste Adsterra Direct Link"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#666666" />
 
-    <Switch
-        android:id="@+id/proxyModeSwitch"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Manual Proxy Mode"
-        android:textColor="#03DAC5"
-        android:textStyle="bold"
-        android:layout_marginBottom="10dp" />
+        <LinearLayout
+            android:id="@+id/webContainer"
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:layout_marginTop="16dp"
+            android:orientation="horizontal"
+            android:weightSum="3"
+            android:background="#000000" />
 
-    <Button
-        android:id="@+id/controlButton"
-        android:layout_width="match_parent"
-        android:layout_height="55dp"
-        android:text="LAUNCH TITAN BOT"
-        android:backgroundTint="#BB86FC"
-        android:textColor="#000000"
-        android:textStyle="bold"
-        app:cornerRadius="10dp"
-        android:layout_marginBottom="10dp"/>
+        <Button
+            android:id="@+id/controlButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:backgroundTint="#BB86FC"
+            android:text="LAUNCH TRIPLE AI ENGINE"
+            android:textColor="#000000" />
 
-    <WebView
-        android:id="@+id/myBrowser"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#1E1E1E" />
-
-</LinearLayout>
+    </LinearLayout>
+</ScrollView>
