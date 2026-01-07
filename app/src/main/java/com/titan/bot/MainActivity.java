@@ -5,6 +5,7 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Context;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -13,6 +14,7 @@ import android.webkit.*;
 import androidx.webkit.ProxyConfig;
 import androidx.webkit.ProxyController;
 import androidx.webkit.WebViewFeature;
+import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -39,8 +41,8 @@ public class MainActivity extends Activity {
     private Switch proxyModeSwitch;
     
     private Handler mainHandler = new Handler(Looper.getMainLooper());
-    private ExecutorService scraperExecutor = Executors.newFixedThreadPool(4); 
-    private ExecutorService validatorExecutor = Executors.newFixedThreadPool(15); 
+    private ExecutorService scraperExecutor = Executors.newFixedThreadPool(15); 
+    private ExecutorService validatorExecutor = Executors.newFixedThreadPool(50); 
     
     private Random random = new Random();
     private int visitCounter = 0, clickCounter = 0;
@@ -48,11 +50,11 @@ public class MainActivity extends Activity {
     private String currentProxy = "Direct", currentCountry = "Bypassing...";
     private CopyOnWriteArrayList<String> VERIFIED_PROXIES = new CopyOnWriteArrayList<>();
 
-    // محرك متصفحات كروم حديثة مع ميزات GoLogin
+    // هوية متصفحات حديثة جداً لتجاوز الحماية
     private String[] CHROME_PROFILES = {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
+        "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
     };
 
     @Override
@@ -60,6 +62,9 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         
+        // تفعيل تسريع العتاد لظهور الإعلانات بسرعة
+        getWindow().setFlags(16777216, 16777216); 
+
         dashboardView = findViewById(R.id.dashboardView);
         linkInput = findViewById(R.id.linkInput);
         manualProxyInput = findViewById(R.id.manualProxyInput);
@@ -68,42 +73,47 @@ public class MainActivity extends Activity {
         myBrowser = findViewById(R.id.myBrowser);
 
         createNotificationChannel(); 
-        initChromeSettings();
-        startUltraScraper(); 
+        initHyperSettings();
+        startGlobalScraper(); 
     }
 
-    private void initChromeSettings() {
+    private void initHyperSettings() {
         WebSettings s = myBrowser.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
-        s.setCacheMode(WebSettings.LOAD_DEFAULT);
+        s.setCacheMode(WebSettings.LOAD_NO_CACHE); // لضمان تحميل إعلان جديد كل مرة
+        s.setLoadsImagesAutomatically(true);
+        s.setBlockNetworkImage(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         
         myBrowser.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
                 if (isBotRunning) {
-                    // دمج ميزات GoLogin للتخفي وقتل WebRTC
+                    // نظام تجاوز الحماية العميق (Canvas & WebRTC Bypass)
                     myBrowser.loadUrl("javascript:(function(){" +
                         "Object.defineProperty(navigator,'webdriver',{get:()=>false});" +
-                        "Object.defineProperty(navigator,'deviceMemory',{get:()=>8});" +
+                        "Object.defineProperty(navigator,'languages',{get:()=>['en-US','en']});" +
                         "var pc = window.RTCPeerConnection || window.webkitRTCPeerConnection;" +
                         "if(pc) pc.prototype.createOffer = function(){ return new Promise(function(res,rej){ rej(); }); };" +
                         "})()");
 
-                    // النقر المتذبذب الذكي 3-5%
-                    if (random.nextInt(100) < (3 + random.nextInt(3))) {
+                    // نقر سريع عشوائي
+                    if (random.nextInt(100) < 5) {
                         mainHandler.postDelayed(() -> {
-                            myBrowser.loadUrl("javascript:(function(){" +
-                                "var links = document.querySelectorAll('a, button');" +
-                                "if(links.length > 0) links[Math.floor(Math.random()*links.length)].click();" +
-                                "})()");
+                            myBrowser.loadUrl("javascript:document.querySelector('a, button').click();");
                             clickCounter++;
-                            updateDashboard("🎯 Pro Click Executed");
-                        }, 8000 + random.nextInt(4000));
+                        }, 5000);
                     }
-                    myBrowser.loadUrl("javascript:window.scrollBy({top: 400, behavior: 'smooth'});");
+                }
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                // معالجة "صفحة الويب غير متوفرة" عبر إعادة التشغيل الفوري ببروكسي جديد
+                if (isBotRunning && request.isForMainFrame()) {
+                    mainHandler.post(() -> startNewSession());
                 }
             }
         });
@@ -112,7 +122,10 @@ public class MainActivity extends Activity {
 
     private void startNewSession() {
         if (!isBotRunning) return;
+        
+        // تنظيف شامل للجلسة السابقة لضمان السرعة
         CookieManager.getInstance().removeAllCookies(null);
+        myBrowser.clearCache(true);
 
         if (proxyModeSwitch.isChecked() && !manualProxyInput.getText().toString().isEmpty()) {
             String[] list = manualProxyInput.getText().toString().split("\n");
@@ -124,57 +137,62 @@ public class MainActivity extends Activity {
         applyProxySettings(currentProxy);
         fetchGeoInfo(currentProxy);
 
-        myBrowser.getSettings().setUserAgentString(CHROME_PROFILES[random.nextInt(CHROME_PROFILES.length)]);
+        String userAgent = CHROME_PROFILES[random.nextInt(CHROME_PROFILES.length)];
+        myBrowser.getSettings().setUserAgentString(userAgent);
+
         String url = linkInput.getText().toString().trim();
         if (url.isEmpty()) return;
 
         visitCounter++;
         updateDashboard("");
-        
+
         Map<String, String> headers = new HashMap<>();
         headers.put("Referer", "https://www.google.com/");
+        headers.put("Sec-CH-UA", "\"Not/A)Bit\";v=\"8\", \"Chromium\";v=\"126\", \"Google Chrome\";v=\"126\"");
         myBrowser.loadUrl(url, headers);
 
-        // تعديل الزمن العشوائي الجديد: من 15 إلى 40 ثانية
-        int turboRandomTime = (15 + random.nextInt(26)) * 1000; 
-        mainHandler.postDelayed(this::startNewSession, turboRandomTime);
+        // تقليل الزمن ليكون عشوائياً بين 20 و 35 ثانية
+        int randomTime = (20 + random.nextInt(16)) * 1000; 
+        mainHandler.postDelayed(this::startNewSession, randomTime);
     }
 
-    // --- الدوال الأساسية للجمع والعمل في الخلفية ---
-    private void startUltraScraper() {
-        String[] sources = {"https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt","https://api.proxyscrape.com/v2/?request=getproxies&protocol=http"};
-        scraperExecutor.execute(() -> {
-            while (true) {
-                for (String src : sources) {
+    // نظام جلب بروكسيات عالمي فائق السرعة
+    private void startGlobalScraper() {
+        String[] sources = {
+            "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
+            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http",
+            "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+            "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-http.txt"
+        };
+        for (String src : sources) {
+            scraperExecutor.execute(() -> {
+                while (true) {
                     try {
                         URL url = new URL(src);
                         BufferedReader r = new BufferedReader(new InputStreamReader(url.openStream()));
                         String l;
-                        while ((l = r.readLine()) != null && VERIFIED_PROXIES.size() < 2500) {
+                        while ((l = r.readLine()) != null) {
                             if (l.contains(":")) validateProxy(l.trim());
                         }
+                        Thread.sleep(120000);
                     } catch (Exception e) {}
                 }
-                try { Thread.sleep(60000); } catch (Exception e) {}
-            }
-        });
+            });
+        }
     }
 
     private void validateProxy(String addr) {
         validatorExecutor.execute(() -> {
             try {
                 String[] p = addr.split(":");
-                HttpURLConnection c = (HttpURLConnection) new URL("http://ip-api.com/json/" + p[0]).openConnection(
+                HttpURLConnection c = (HttpURLConnection) new URL("https://www.google.com").openConnection(
                     new Proxy(Proxy.Type.HTTP, new InetSocketAddress(p[0], Integer.parseInt(p[1])))
                 );
-                c.setConnectTimeout(6000); 
+                c.setConnectTimeout(3000); // تقليل وقت الانتظار للبروكسيات البطيئة
                 if (c.getResponseCode() == 200) {
-                    JSONObject j = new JSONObject(new BufferedReader(new InputStreamReader(c.getInputStream())).readLine());
-                    if (!j.optString("org", "").toLowerCase().contains("amazon")) {
-                        if (!VERIFIED_PROXIES.contains(addr)) {
-                            VERIFIED_PROXIES.add(addr);
-                            updateDashboard("");
-                        }
+                    if (!VERIFIED_PROXIES.contains(addr)) {
+                        VERIFIED_PROXIES.add(addr);
+                        updateDashboard("");
                     }
                 }
             } catch (Exception e) {}
@@ -183,9 +201,8 @@ public class MainActivity extends Activity {
 
     private void updateDashboard(String msg) {
         mainHandler.post(() -> {
-            String status = isBotRunning ? "🛡️ Mode: Chrome-Stealth Turbo" : "⚡ Ready";
-            dashboardView.setText(status + "\n📊 Visits: " + visitCounter + " | Clicks: " + clickCounter + 
-                "\n🌍 Geo: " + currentCountry + "\n🌐 Proxy: " + currentProxy + "\n📦 Pure Pool: " + VERIFIED_PROXIES.size());
+            dashboardView.setText("🚀 Mode: Hyper-Speed Bypass\n📊 Visits: " + visitCounter + " | Clicks: " + clickCounter + 
+                "\n🌍 Geo: " + currentCountry + "\n🌐 Proxy: " + currentProxy + "\n📦 Pool: " + VERIFIED_PROXIES.size());
         });
     }
 
@@ -208,9 +225,9 @@ public class MainActivity extends Activity {
 
     private void toggleBot() {
         isBotRunning = !isBotRunning;
-        controlButton.setText(isBotRunning ? "STOP TITAN" : "LAUNCH TITAN PRO");
-        if (isBotRunning) { startNewSession(); showNotification("TitanBot Turbo Running..."); }
-        else { mainHandler.removeCallbacksAndMessages(null); stopNotification(); }
+        controlButton.setText(isBotRunning ? "STOP HYPER" : "LAUNCH HYPER SPEED");
+        if (isBotRunning) startNewSession();
+        else mainHandler.removeCallbacksAndMessages(null);
     }
 
     private void createNotificationChannel() {
@@ -218,13 +235,4 @@ public class MainActivity extends Activity {
             ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE)).createNotificationChannel(new NotificationChannel("BOT_CHANNEL", "Titan Bot Service", NotificationManager.IMPORTANCE_LOW));
         }
     }
-
-    private void showNotification(String t) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder b = new Notification.Builder(this, "BOT_CHANNEL").setContentTitle("TitanBot Ultra PRO").setContentText(t).setSmallIcon(android.R.drawable.ic_dialog_info).setOngoing(true);
-            ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE)).notify(1, b.build());
-        }
-    }
-
-    private void stopNotification() { ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE)).cancel(1); }
-            }
+}
