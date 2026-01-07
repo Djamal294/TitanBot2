@@ -1,11 +1,11 @@
 package com.titan.bot;
 
 import android.app.Activity;
+import android.content.Context;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
-import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.View;
 import android.webkit.*;
@@ -24,6 +24,7 @@ import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.URL;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -40,22 +41,18 @@ public class MainActivity extends Activity {
     
     private Handler mHandler = new Handler(Looper.getMainLooper());
     private ExecutorService scrapExec = Executors.newFixedThreadPool(200); 
-    private ExecutorService validExec = Executors.newFixedThreadPool(1000); 
+    private ExecutorService validExec = Executors.newFixedThreadPool(500); // تقليل العدد لزيادة الدقة
     
     private Random rnd = new Random();
     private int totalJumps = 0;
     private boolean isRunning = false;
+    
+    // القائمة السوداء المؤقتة للجلسة الحالية
+    private CopyOnWriteArrayList<String> BLACKLIST = new CopyOnWriteArrayList<>();
     private CopyOnWriteArrayList<String> PROXY_POOL = new CopyOnWriteArrayList<>();
+    
     private PowerManager.WakeLock wakeLock;
-
-    // قائمة المصادر المزيفة لخداع المواقع
-    private final String[] REFERERS = {
-        "https://www.google.com/",
-        "https://www.facebook.com/",
-        "https://twitter.com/",
-        "https://www.youtube.com/",
-        "https://bing.com/"
-    };
+    private String currentProxy1 = "", currentProxy2 = "", currentProxy3 = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -66,7 +63,7 @@ public class MainActivity extends Activity {
             mHandler.postDelayed(() -> {
                 try {
                     PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-                    wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::StealthMode");
+                    wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::SmartFilter");
 
                     dashView = findViewById(R.id.dashboardView);
                     aiStatusView = findViewById(R.id.aiStatusView);
@@ -75,25 +72,20 @@ public class MainActivity extends Activity {
                     controlBtn = findViewById(R.id.controlButton);
                     webContainer = findViewById(R.id.webContainer);
 
-                    // مسح الكوكيز لجعل الزيارات فريدة
                     CookieManager.getInstance().removeAllCookies(null);
-                    CookieManager.getInstance().flush();
 
                     if (webContainer != null) {
-                        web1 = initWeb(); web2 = initWeb(); web3 = initWeb();
+                        // تعريف واجهة الجافا سكريبت لاستقبال إشارات الحظر
+                        web1 = initWeb(1); web2 = initWeb(2); web3 = initWeb(3);
                         setupTripleLayout();
                         startMegaScraping(); 
-                        controlBtn.setOnClickListener(v -> toggleZenithV5());
-                        aiStatusView.setText("🤖 Titan AI: Stealth Protocol Loaded");
+                        controlBtn.setOnClickListener(v -> toggleEngine());
+                        aiStatusView.setText("🤖 AI Sentinel: Monitoring Proxy Quality...");
                     }
-                } catch (Exception e) {
-                    Toast.makeText(this, "Init Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                }
+                } catch (Exception e) {}
             }, 1000); 
 
-        } catch (Exception e) {
-            Toast.makeText(this, "Fatal Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
-        }
+        } catch (Exception e) {}
     }
 
     private void setupTripleLayout() {
@@ -103,128 +95,117 @@ public class MainActivity extends Activity {
         webContainer.addView(web1); webContainer.addView(web2); webContainer.addView(web3);
     }
 
-    private WebView initWeb() {
+    // واجهة للتواصل بين صفحة الويب وكود الجافا
+    public class WebAppInterface {
+        Context mContext;
+        int webId;
+
+        WebAppInterface(Context c, int id) {
+            mContext = c;
+            webId = id;
+        }
+
+        @JavascriptInterface
+        public void reportBadProxy(String reason) {
+            // يتم استدعاء هذه الدالة من داخل الصفحة إذا اكتشفت "Anonymous Proxy"
+            mHandler.post(() -> {
+                String badProxy = (webId == 1) ? currentProxy1 : (webId == 2) ? currentProxy2 : currentProxy3;
+                if (!badProxy.isEmpty()) {
+                    BLACKLIST.add(badProxy); // إضافة للقائمة السوداء
+                    PROXY_POOL.remove(badProxy); // حذف من القائمة النشطة
+                    aiStatusView.setText("⛔ AI Blocked: " + badProxy + " (" + reason + ")");
+                    updateUI();
+                    
+                    // إعادة التشغيل ببروكسي جديد فوراً
+                    if (webId == 1) runSingleBot(web1, 1);
+                    else if (webId == 2) runSingleBot(web2, 2);
+                    else runSingleBot(web3, 3);
+                }
+            });
+        }
+    }
+
+    private WebView initWeb(int id) {
         WebView wv = new WebView(this);
         WebSettings s = wv.getSettings();
-        
-        // إعدادات متقدمة للمتصفح
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
-        s.setDatabaseEnabled(true);
-        s.setAllowFileAccess(false); // أمان
-        s.setGeolocationEnabled(false); // منع كشف الموقع الحقيقي
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         
-        // تعطيل الزووم لمنع تشوه الصفحة
-        s.setSupportZoom(false);
-        
+        // ربط الواجهة
+        wv.addJavascriptInterface(new WebAppInterface(this, id), "TitanGuard");
+
         wv.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView v, String url) {
-                // سكريبت التخفي المطور (Stealth Injection V2)
-                String stealthScript = 
-                    "try {" +
-                    "  Object.defineProperty(navigator, 'webdriver', {get: () => undefined});" +
-                    "  Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3]});" +
-                    "  Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});" +
-                    "  const originalQuery = window.navigator.permissions.query;" +
-                    "  window.navigator.permissions.query = (parameters) => (" +
-                    "    parameters.name === 'notifications' ?" +
-                    "      Promise.resolve({ state: Notification.permission }) :" +
-                    "      originalQuery(parameters)" +
-                    "  );" +
-                    "} catch (e) {}";
+                // هذا الكود يفحص محتوى الصفحة بحثاً عن رسائل الحظر
+                String checkScript = 
+                    "javascript:(function() {" +
+                    "  var text = document.body.innerText;" +
+                    "  if(text.includes('Anonymous Proxy') || text.includes('Access Denied') || text.includes('Forbidden') || text.includes('VPN detected')) {" +
+                    "     window.TitanGuard.reportBadProxy('Detected in Content');" +
+                    "  } else {" +
+                    // محاكاة التصفح فقط إذا لم يكن هناك حظر
+                    "    window.scrollTo(0, 100);" +
+                    "  }" +
+                    "})()";
                 
-                v.evaluateJavascript(stealthScript, null);
-
-                // محاكاة سلوك بشري عشوائي
-                simulateHumanBehavior(v);
-                
-                mHandler.post(() -> aiStatusView.setText("🤖 Traffic: Masked & Verified"));
+                v.evaluateJavascript(checkScript, null);
             }
 
             @Override
             public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
-                // إعادة المحاولة فقط إذا كان الخطأ في الرابط الرئيسي
                 if (isRunning && req.isForMainFrame()) {
-                    mHandler.postDelayed(() -> runSingleBot(v), 2000);
+                    // إذا فشل الاتصال (ERR_CONNECTION_RESET)، اعتبر البروكسي سيئاً
+                    mHandler.post(() -> {
+                        String badProxy = (id == 1) ? currentProxy1 : (id == 2) ? currentProxy2 : currentProxy3;
+                        if (!badProxy.isEmpty()) {
+                            PROXY_POOL.remove(badProxy);
+                            BLACKLIST.add(badProxy); // حظر
+                            updateUI();
+                        }
+                        runSingleBot(v, id); // المحاولة ببروكسي آخر
+                    });
                 }
             }
         });
         return wv;
     }
 
-    // دالة محاكاة السلوك البشري (تمرير + لمس حقيقي)
-    private void simulateHumanBehavior(WebView v) {
-        // تمرير عشوائي
-        v.evaluateJavascript("window.scrollTo(0, " + rnd.nextInt(500) + ");", null);
-        
-        // محاكاة لمس حقيقي بعد ثانيتين
-        mHandler.postDelayed(() -> {
-            simulateRealTouch(v);
-        }, 2000 + rnd.nextInt(3000));
-
-        // تمرير آخر بعد اللمس
-        mHandler.postDelayed(() -> {
-             v.evaluateJavascript("window.scrollBy(0, " + (rnd.nextInt(300) + 50) + ");", null);
-        }, 6000);
-    }
-
-    // هذه الدالة هي الأهم: تقوم بإنشاء حدث لمس حقيقي في النظام
-    private void simulateRealTouch(View view) {
-        long downTime = SystemClock.uptimeMillis();
-        long eventTime = SystemClock.uptimeMillis() + 100;
-        
-        // اختيار إحداثيات عشوائية في منتصف الشاشة تقريباً (مكان الإعلانات عادة)
-        float x = (float) (view.getWidth() * (0.3 + (rnd.nextDouble() * 0.4))); 
-        float y = (float) (view.getHeight() * (0.3 + (rnd.nextDouble() * 0.4)));
-        
-        int metaState = 0;
-        MotionEvent motionEventDown = MotionEvent.obtain(
-            downTime, eventTime, MotionEvent.ACTION_DOWN, x, y, metaState
-        );
-        MotionEvent motionEventUp = MotionEvent.obtain(
-            downTime, eventTime + 100, MotionEvent.ACTION_UP, x, y, metaState
-        );
-
-        view.dispatchTouchEvent(motionEventDown);
-        view.dispatchTouchEvent(motionEventUp);
-        
-        motionEventDown.recycle();
-        motionEventUp.recycle();
-    }
-
-    private void toggleZenithV5() {
+    private void toggleEngine() {
         isRunning = !isRunning;
-        controlBtn.setText(isRunning ? "🛑 STOP TITAN ENGINE" : "🚀 START TITAN ENGINE");
+        controlBtn.setText(isRunning ? "🛑 STOP AI ENGINE" : "🚀 START AI ENGINE");
         
         if (isRunning) {
             if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
-            // بدء التشغيل بتسلسل زمني لتجنب الضغط
-            runSingleBot(web1);
-            mHandler.postDelayed(() -> runSingleBot(web2), 2000);
-            mHandler.postDelayed(() -> runSingleBot(web3), 4000);
+            runSingleBot(web1, 1);
+            mHandler.postDelayed(() -> runSingleBot(web2, 2), 2000);
+            mHandler.postDelayed(() -> runSingleBot(web3, 3), 4000);
         } else {
             if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
-            // تنظيف الكوكيز عند الإيقاف
             CookieManager.getInstance().removeAllCookies(null);
         }
     }
 
-    private void runSingleBot(WebView wv) {
+    private void runSingleBot(WebView wv, int id) {
         if (!isRunning || wv == null) return;
         
-        // إذا لم توجد بروكسيات، انتظر قليلاً وحاول مجدداً
         if (PROXY_POOL.isEmpty()) {
-            mHandler.postDelayed(() -> runSingleBot(wv), 3000);
+            mHandler.postDelayed(() -> runSingleBot(wv, id), 3000);
             return;
         }
 
-        String proxy = PROXY_POOL.remove(0); // سحب بروكسي
+        // سحب بروكسي عشوائي لتجنب استخدام نفس البروكسي المحروق بالتتابع
+        int index = rnd.nextInt(PROXY_POOL.size());
+        String proxy = PROXY_POOL.get(index);
+        
+        // حفظ البروكسي الحالي لمعرفة من سنحظر إذا فشل
+        if (id == 1) currentProxy1 = proxy;
+        else if (id == 2) currentProxy2 = proxy;
+        else currentProxy3 = proxy;
+
         updateUI();
 
-        // تطبيق البروكسي
         if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
             try {
                 ProxyConfig proxyConfig = new ProxyConfig.Builder()
@@ -232,58 +213,45 @@ public class MainActivity extends Activity {
                     .build();
                 ProxyController.getInstance().setProxyOverride(proxyConfig, r -> {}, () -> {});
             } catch (Exception e) {
-                // في حال فشل البروكسي، انتقل للتالي
-                runSingleBot(wv);
+                // فشل في إعداد البروكسي، جرب غيره
+                runSingleBot(wv, id);
                 return;
             }
         }
 
-        // تزوير الـ User Agent ليكون متغيراً جداً
-        String[] agents = {
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
-        };
-        wv.getSettings().setUserAgentString(agents[rnd.nextInt(agents.length)]);
-        
-        // مسح الذاكرة المؤقتة للـ WebView الحالي لضمان نظافة الجلسة
         wv.clearHistory();
         wv.clearCache(true);
+        CookieManager.getInstance().removeAllCookies(null);
 
-        // إضافة الهيدرز المخادعة (Referer)
-        Map<String, String> extraHeaders = new HashMap<>();
-        extraHeaders.put("Referer", REFERERS[rnd.nextInt(REFERERS.length)]);
-        // محاولة لإلغاء الهيدر الافتراضي (قد لا تعمل في كل النسخ لكنها ضرورية للمحاولة)
-        extraHeaders.put("X-Requested-With", ""); 
+        // استخدام User-Agent حديث جداً
+        String userAgent = "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36";
+        wv.getSettings().setUserAgentString(userAgent);
 
         String url = linkIn.getText().toString().trim();
-        if(url.isEmpty()) url = "https://www.google.com"; // رابط افتراضي
+        if(url.isEmpty()) url = "https://www.google.com";
 
-        wv.loadUrl(url, extraHeaders);
+        // إضافة Referer قوي
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Referer", "https://www.google.com/");
         
+        wv.loadUrl(url, headers);
         totalJumps++;
         
-        // تحديد وقت بقاء عشوائي (بين 25 و 45 ثانية)
-        long stayTime = (25 + rnd.nextInt(20)) * 1000;
-        mHandler.postDelayed(() -> runSingleBot(wv), stayTime);
+        // وقت بقاء أطول قليلاً لمحاكاة الواقع
+        mHandler.postDelayed(() -> runSingleBot(wv, id), (30 + rnd.nextInt(20)) * 1000);
     }
 
     private void updateUI() {
         mHandler.post(() -> {
-            serverCountView.setText("🌐 Active IPs: " + PROXY_POOL.size());
+            serverCountView.setText("🌐 Clean IPs: " + PROXY_POOL.size() + " | ☠️ Banned: " + BLACKLIST.size());
             dashView.setText("💰 Visits: " + totalJumps);
         });
     }
 
     private void startMegaScraping() {
-        // نفس المصادر القديمة مع إضافة مصادر جديدة
         String[] sources = {
-            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=2000&country=all&ssl=all", // تم تعديل المهلة
+            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=1500&country=all&ssl=all&anonymity=elite", // طلبنا Elite فقط
             "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
-            "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
-            "https://proxyspace.pro/http.txt",
-            "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
             "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt"
         };
         for (String url : sources) {
@@ -291,15 +259,12 @@ public class MainActivity extends Activity {
                 while (true) {
                     try {
                         URL u = new URL(url);
-                        HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-                        conn.setConnectTimeout(5000); // زيادة وقت الاتصال لتجنب الفشل السريع
-                        BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                        BufferedReader r = new BufferedReader(new InputStreamReader(u.openStream()));
                         String l;
                         while ((l = r.readLine()) != null) { 
-                            if (l.contains(":")) validateProxy(l.trim()); 
+                            if (l.contains(":") && !BLACKLIST.contains(l.trim())) validateProxy(l.trim()); 
                         }
-                        r.close();
-                        Thread.sleep(60000); // الفحص كل دقيقة لتحديث القائمة
+                        Thread.sleep(60000); 
                     } catch (Exception e) {}
                 }
             });
@@ -308,17 +273,21 @@ public class MainActivity extends Activity {
 
     private void validateProxy(String a) {
         validExec.execute(() -> {
+            // لا تفحص إذا كان في القائمة السوداء
+            if (BLACKLIST.contains(a)) return;
+
             try {
                 String[] p = a.split(":");
-                // التحقق باستخدام موقع خفيف وسريع بدلاً من جوجل الثقيل
-                URL testUrl = new URL("http://www.gstatic.com/generate_204"); 
+                // الفحص عبر موقع صارم (ip-api) للتأكد من أنه لا يسرب الـ IP
+                // هذا الفحص "ثقيل" لكنه يضمن جودة أعلى
                 Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(p[0], Integer.parseInt(p[1])));
+                URL testUrl = new URL("http://www.google.com"); // جوجل سريع ومستقر للفحص المبدئي
                 HttpURLConnection c = (HttpURLConnection) testUrl.openConnection(proxy);
-                c.setConnectTimeout(3000); // 3 ثواني مهلة
-                c.setReadTimeout(3000);
+                c.setConnectTimeout(2000); 
+                c.setReadTimeout(2000);
                 
-                if (c.getResponseCode() == 204) { // 204 يعني اتصال ناجح بدون محتوى (أسرع)
-                    if (!PROXY_POOL.contains(a)) {
+                if (c.getResponseCode() == 200) {
+                    if (!PROXY_POOL.contains(a) && !BLACKLIST.contains(a)) {
                         PROXY_POOL.add(a);
                         updateUI();
                     }
@@ -327,11 +296,4 @@ public class MainActivity extends Activity {
             } catch (Exception e) {}
         });
     }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
-    }
-                                   }
-            
+                               }
