@@ -38,7 +38,7 @@ public class MainActivity extends Activity {
     private ExecutorService validExec = Executors.newFixedThreadPool(80); 
     
     private Random rnd = new Random();
-    private int vCount = 0;
+    private int successCount = 0;
     private boolean isRunning = false;
     private CopyOnWriteArrayList<String> PROXY_POOL = new CopyOnWriteArrayList<>();
 
@@ -46,8 +46,6 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        
-        // تفعيل تسريع العتاد القصوى
         getWindow().setFlags(16777216, 16777216); 
 
         dashView = findViewById(R.id.dashboardView);
@@ -59,7 +57,6 @@ public class MainActivity extends Activity {
 
         web1 = initWeb(); web2 = initWeb(); web3 = initWeb();
         setupTripleLayout();
-
         startScraping();
         controlBtn.setOnClickListener(v -> toggleMasterEngine());
     }
@@ -83,20 +80,24 @@ public class MainActivity extends Activity {
         wv.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView v, String url) {
-                // حقن نظام "البصمة المتغيرة" وتزييف الشاشة
-                int fakeWidth = 360 + rnd.nextInt(100);
-                int fakeHeight = 640 + rnd.nextInt(200);
-                
+                // نظام محاكاة اللمس البشري وتصحيح التوقيت
                 v.loadUrl("javascript:(function(){" +
                     "Object.defineProperty(navigator,'webdriver',{get:()=>false});" +
-                    "Object.defineProperty(screen,'width',{get:()=>"+fakeWidth+"});" +
-                    "Object.defineProperty(screen,'height',{get:()=>"+fakeHeight+"});" +
-                    "Object.defineProperty(navigator,'hardwareConcurrency',{get:()=>"+(2+rnd.nextInt(6))+"});" +
-                    "window.scrollTo(0, "+rnd.nextInt(300)+");" +
                     "setInterval(function(){ " +
-                    "   window.scrollBy(0, "+(rnd.nextBoolean() ? 50 : -20)+");" + // حركة اهتزاز بشرية
+                    "   var x = Math.floor(Math.random() * window.innerWidth);" +
+                    "   var y = Math.floor(Math.random() * window.innerHeight);" +
+                    "   var el = document.elementFromPoint(x, y);" +
+                    "   if(el) el.click();" + 
                     "}, 4000);" +
+                    "window.scrollBy(0, 100);" +
                     "})()");
+
+                // كشف رسائل الحظر آلياً لتطهير البروكسي
+                v.evaluateJavascript("document.body.innerText.includes('Anonymous Proxy')", value -> {
+                    if (Boolean.parseBoolean(value)) {
+                        mHandler.post(() -> runSingleBot(v)); // إعادة التشغيل فوراً ببروكسي جديد
+                    }
+                });
             }
 
             @Override
@@ -111,7 +112,7 @@ public class MainActivity extends Activity {
 
     private void toggleMasterEngine() {
         isRunning = !isRunning;
-        controlBtn.setText(isRunning ? "🛑 STOP MASTER" : "🚀 LAUNCH BYPASS PRO MAX");
+        controlBtn.setText(isRunning ? "🛑 STOP MASTER" : "🚀 LAUNCH MASTER VIP");
         if (isRunning) {
             runSingleBot(web1);
             mHandler.postDelayed(() -> runSingleBot(web2), 5000);
@@ -129,22 +130,16 @@ public class MainActivity extends Activity {
             ProxyController.getInstance().setProxyOverride(new ProxyConfig.Builder().addProxyRule(proxy).build(), r -> {}, () -> {});
         }
 
-        // هويات متغيرة لكل عملية بوت
-        String[] agents = {
-            "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
-            "Mozilla/5.0 (Linux; Android 14; Samsung SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
-        };
-        wv.getSettings().setUserAgentString(agents[rnd.nextInt(agents.length)]);
+        wv.getSettings().setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36");
         
         Map<String, String> h = new HashMap<>();
-        h.put("X-Requested-With", "com.android.vending"); // تزييف الطلب كأنه قادم من متجر جوجل بلاي
+        h.put("X-Requested-With", "com.android.chrome");
         
         wv.loadUrl(linkIn.getText().toString().trim(), h);
-        vCount++;
-        dashView.setText("💰 Master Engine | Success: " + vCount);
+        successCount++;
+        dashView.setText("💰 Master Engine | Jumps: " + successCount);
         
-        mHandler.postDelayed(() -> runSingleBot(wv), (30 + rnd.nextInt(25)) * 1000);
+        mHandler.postDelayed(() -> runSingleBot(wv), (35 + rnd.nextInt(25)) * 1000);
     }
 
     private void updateServerCount() {
@@ -153,9 +148,8 @@ public class MainActivity extends Activity {
 
     private void startScraping() {
         String[] sources = {
-            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=4000&country=all",
-            "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
-            "https://raw.githubusercontent.com/officialputuid/Proxy-List/master/http.txt"
+            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=3000&country=US,GB,DE,FR,CA", // التركيز على دول الـ CPM العالي
+            "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt"
         };
         for (String url : sources) {
             scrapExec.execute(() -> {
@@ -165,7 +159,7 @@ public class MainActivity extends Activity {
                         BufferedReader r = new BufferedReader(new InputStreamReader(u.openStream()));
                         String l;
                         while ((l = r.readLine()) != null) { if (l.contains(":")) validate(l.trim()); }
-                        Thread.sleep(150000);
+                        Thread.sleep(120000);
                     } catch (Exception e) {}
                 }
             });
@@ -179,7 +173,7 @@ public class MainActivity extends Activity {
                 HttpURLConnection c = (HttpURLConnection) new URL("https://www.google.com").openConnection(
                     new Proxy(Proxy.Type.HTTP, new InetSocketAddress(p[0], Integer.parseInt(p[1])))
                 );
-                c.setConnectTimeout(2500); // فلترة قاسية جداً للخوادم البطيئة
+                c.setConnectTimeout(2000); // فلترة قاسية جداً لضمان السرعة ومنع TIMED_OUT
                 if (c.getResponseCode() == 200) {
                     if (!PROXY_POOL.contains(a)) {
                         PROXY_POOL.add(a);
@@ -189,4 +183,4 @@ public class MainActivity extends Activity {
             } catch (Exception e) {}
         });
     }
-}
+            }
