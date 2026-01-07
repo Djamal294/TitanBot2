@@ -48,9 +48,10 @@ public class MainActivity extends Activity {
     private String currentProxy = "Direct", currentCountry = "Bypassing...";
     private CopyOnWriteArrayList<String> VERIFIED_PROXIES = new CopyOnWriteArrayList<>();
 
-    private String[] DEVICE_PROFILES = {
+    // ميزة 1: محرك متصفحات كروم حديثة جداً
+    private String[] CHROME_PROFILES = {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
     };
 
@@ -67,16 +68,15 @@ public class MainActivity extends Activity {
         myBrowser = findViewById(R.id.myBrowser);
 
         createNotificationChannel(); 
-        initSettings();
+        initChromeSettings();
         startUltraScraper(); 
     }
 
-    private void initSettings() {
+    private void initChromeSettings() {
         WebSettings s = myBrowser.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
-        // تم إزالة السطر المسبب للخطأ setAppCacheEnabled لضمان نجاح الـ Build
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         
@@ -84,47 +84,67 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 if (isBotRunning) {
-                    // حماية WebRTC وتخفي Gologin
+                    // ميزة 2: تخفي كروم وقتل ثغرة WebRTC لمنع كشف الـ IP
                     myBrowser.loadUrl("javascript:(function(){" +
                         "Object.defineProperty(navigator,'webdriver',{get:()=>false});" +
                         "var pc = window.RTCPeerConnection || window.webkitRTCPeerConnection;" +
                         "if(pc) pc.prototype.createOffer = function(){ return new Promise(function(res,rej){ rej(); }); };" +
                         "})()");
 
-                    // النقر المتذبذب الذكي 3-5%
-                    if (random.nextInt(100) < (3 + random.nextInt(3))) {
+                    // ميزة 3: النقر المتذبذب الذكي 3-5%
+                    int clickChance = 3 + random.nextInt(3);
+                    if (random.nextInt(100) < clickChance) {
                         mainHandler.postDelayed(() -> {
                             myBrowser.loadUrl("javascript:(function(){" +
                                 "var links = document.querySelectorAll('a, button');" +
                                 "if(links.length > 0) links[Math.floor(Math.random()*links.length)].click();" +
                                 "})()");
                             clickCounter++;
-                            updateDashboard("🎯 Bypass Click Applied");
-                        }, 12000 + random.nextInt(8000));
+                            updateDashboard("🎯 Chrome Click: " + clickChance + "%");
+                        }, 10000 + random.nextInt(5000));
                     }
-                    myBrowser.loadUrl("javascript:window.scrollBy({top: 400, behavior: 'smooth'});");
-                }
-            }
-
-            @Override
-            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                // إعادة المحاولة عند حدوث ERR_EMPTY_RESPONSE
-                if (isBotRunning && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    if (error.getErrorCode() == ERROR_CONNECT || error.getErrorCode() == ERROR_TIMEOUT) {
-                        mainHandler.postDelayed(() -> startNewSession(), 2000);
-                    }
+                    myBrowser.loadUrl("javascript:window.scrollBy({top: 500, behavior: 'smooth'});");
                 }
             }
         });
         controlButton.setOnClickListener(v -> toggleBot());
     }
 
+    private void startNewSession() {
+        if (!isBotRunning) return;
+        CookieManager.getInstance().removeAllCookies(null);
+
+        if (proxyModeSwitch.isChecked() && !manualProxyInput.getText().toString().isEmpty()) {
+            String[] list = manualProxyInput.getText().toString().split("\n");
+            currentProxy = list[random.nextInt(list.length)].trim();
+        } else if (!VERIFIED_PROXIES.isEmpty()) {
+            currentProxy = VERIFIED_PROXIES.remove(0);
+        }
+
+        applyProxySettings(currentProxy);
+        fetchGeoInfo(currentProxy);
+
+        // تطبيق هوية كروم المختارة عشوائياً
+        myBrowser.getSettings().setUserAgentString(CHROME_PROFILES[random.nextInt(CHROME_PROFILES.length)]);
+        
+        String url = linkInput.getText().toString().trim();
+        if (url.isEmpty()) return;
+
+        visitCounter++;
+        updateDashboard("");
+        
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Referer", "https://www.google.com/");
+        myBrowser.loadUrl(url, headers);
+
+        // ميزة 4: زمن زيارات عشوائي من 20 إلى 80 ثانية [طلب المستخدم]
+        int randomTime = (20 + random.nextInt(61)) * 1000; 
+        mainHandler.postDelayed(this::startNewSession, randomTime);
+    }
+
+    // --- الدوال الأساسية المستقرة ---
     private void startUltraScraper() {
-        String[] sources = {
-            "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
-            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http",
-            "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-http.txt"
-        };
+        String[] sources = {"https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt","https://api.proxyscrape.com/v2/?request=getproxies&protocol=http"};
         scraperExecutor.execute(() -> {
             while (true) {
                 for (String src : sources) {
@@ -152,9 +172,7 @@ public class MainActivity extends Activity {
                 c.setConnectTimeout(6000); 
                 if (c.getResponseCode() == 200) {
                     JSONObject j = new JSONObject(new BufferedReader(new InputStreamReader(c.getInputStream())).readLine());
-                    String org = j.optString("org", "").toLowerCase();
-                    // فلترة بروكسيات الشركات المكشوفة
-                    if (!org.contains("amazon") && !org.contains("microsoft") && !org.contains("google")) {
+                    if (!j.optString("org", "").toLowerCase().contains("amazon")) {
                         if (!VERIFIED_PROXIES.contains(addr)) {
                             VERIFIED_PROXIES.add(addr);
                             updateDashboard("");
@@ -165,38 +183,9 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void startNewSession() {
-        if (!isBotRunning) return;
-        CookieManager.getInstance().removeAllCookies(null);
-
-        if (proxyModeSwitch.isChecked() && !manualProxyInput.getText().toString().isEmpty()) {
-            String[] list = manualProxyInput.getText().toString().split("\n");
-            currentProxy = list[random.nextInt(list.length)].trim();
-        } else if (!VERIFIED_PROXIES.isEmpty()) {
-            currentProxy = VERIFIED_PROXIES.remove(0);
-        }
-
-        applyProxySettings(currentProxy);
-        fetchGeoInfo(currentProxy);
-
-        myBrowser.getSettings().setUserAgentString(DEVICE_PROFILES[random.nextInt(DEVICE_PROFILES.length)]);
-        String url = linkInput.getText().toString().trim();
-        if (url.isEmpty()) return;
-
-        visitCounter++;
-        updateDashboard("");
-        
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Referer", "https://www.google.com/");
-        myBrowser.loadUrl(url, headers);
-
-        // توقيت طويل لتجاوز فحص أدستيرا
-        mainHandler.postDelayed(this::startNewSession, 50000 + random.nextInt(40000));
-    }
-
     private void updateDashboard(String msg) {
         mainHandler.post(() -> {
-            String status = isBotRunning ? "🛡️ Mode: Aggressive Bypass" : "⚡ Ready";
+            String status = isBotRunning ? "🛡️ Mode: Chrome Ultra Bypass" : "⚡ Ready";
             dashboardView.setText(status + "\n📊 Visits: " + visitCounter + " | Clicks: " + clickCounter + 
                 "\n🌍 Geo: " + currentCountry + "\n🌐 Proxy: " + currentProxy + "\n📦 Pure Pool: " + VERIFIED_PROXIES.size());
         });
@@ -221,8 +210,8 @@ public class MainActivity extends Activity {
 
     private void toggleBot() {
         isBotRunning = !isBotRunning;
-        controlButton.setText(isBotRunning ? "STOP TITAN" : "LAUNCH TITAN PRO");
-        if (isBotRunning) { startNewSession(); showNotification("TitanBot Bypass Mode..."); }
+        controlButton.setText(isBotRunning ? "STOP TITAN" : "LAUNCH CHROME PRO");
+        if (isBotRunning) { startNewSession(); showNotification("Chrome Simulation Active..."); }
         else { mainHandler.removeCallbacksAndMessages(null); stopNotification(); }
     }
 
@@ -240,5 +229,4 @@ public class MainActivity extends Activity {
     }
 
     private void stopNotification() { ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE)).cancel(1); }
-                                }
-            
+                        }
