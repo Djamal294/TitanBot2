@@ -34,23 +34,22 @@ public class MainActivity extends Activity {
     private LinearLayout webContainer;
     
     private Handler mHandler = new Handler(Looper.getMainLooper());
-    private ExecutorService scrapExec = Executors.newFixedThreadPool(60); 
-    private ExecutorService validExec = Executors.newFixedThreadPool(250); // رفع كفاءة الفحص
-    private ExecutorService aiExec = Executors.newSingleThreadExecutor();
+    
+    // رفع كفاءة المحرك إلى الحد الأقصى (Singularity Threads)
+    private ExecutorService scrapExec = Executors.newFixedThreadPool(100); 
+    private ExecutorService validExec = Executors.newFixedThreadPool(400); 
     
     private Random rnd = new Random();
-    private int totalJumps = 0;
+    private int successCount = 0;
     private boolean isRunning = false;
     private CopyOnWriteArrayList<String> PROXY_POOL = new CopyOnWriteArrayList<>();
-
-    // متغيرات ميزة "تبديل بصمة الجهاز"
-    private int deviceSwitchCounter = 0;
-    private String currentFakeHardware = "8"; // الرام الافتراضي
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        
+        // تفعيل تسريع العتاد لمنع بطء الرندر
         getWindow().setFlags(16777216, 16777216); 
 
         dashView = findViewById(R.id.dashboardView);
@@ -63,8 +62,8 @@ public class MainActivity extends Activity {
         web1 = initWeb(); web2 = initWeb(); web3 = initWeb();
         setupTripleLayout();
         
-        startTurboScraping(); 
-        controlBtn.setOnClickListener(v -> toggleZenithEngine());
+        startSingularityScraper(); 
+        controlBtn.setOnClickListener(v -> toggleSingularity());
     }
 
     private void setupTripleLayout() {
@@ -86,17 +85,20 @@ public class MainActivity extends Activity {
         wv.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView v, String url) {
-                // حقن البصمة المتغيرة للأجهزة واللمس البشري
+                // حقن بروتوكول التمويه العميق (Deep Masking)
                 v.loadUrl("javascript:(function(){" +
                     "Object.defineProperty(navigator,'webdriver',{get:()=>false});" +
-                    "Object.defineProperty(navigator,'deviceMemory',{get:()=>"+currentFakeHardware+"});" +
-                    "Object.defineProperty(navigator,'hardwareConcurrency',{get:()=>"+(rnd.nextInt(8)+4)+"});" +
+                    "Object.defineProperty(navigator,'deviceMemory',{get:()=>"+(rnd.nextBoolean()?8:16)+"});" +
+                    "var pc = window.RTCPeerConnection || window.webkitRTCPeerConnection;" + // قتل تسريب الـ IP
+                    "if(pc) pc.prototype.createOffer = function(){ return new Promise(function(res,rej){ rej(); }); };" +
                     "window.scrollTo(0, "+rnd.nextInt(500)+");" +
                     "setInterval(function(){ " +
-                    "   window.scrollBy(0, "+(rnd.nextBoolean() ? 70 : -20)+");" +
-                    "}, 5000);" +
+                    "   window.scrollBy(0, "+(rnd.nextBoolean() ? 50 : -20)+");" +
+                    "   if(Math.random() > 0.7) document.body.click();" + // نقرات بشرية ذكية
+                    "}, 4000);" +
                     "})()");
 
+                // كشف حظر البروكسي والتبديل التلقائي
                 v.evaluateJavascript("document.body.innerText.includes('Anonymous Proxy')", value -> {
                     if (Boolean.parseBoolean(value)) mHandler.post(() -> runSingleBot(v));
                 });
@@ -110,27 +112,18 @@ public class MainActivity extends Activity {
         return wv;
     }
 
-    private void toggleZenithEngine() {
+    private void toggleSingularity() {
         isRunning = !isRunning;
-        controlBtn.setText(isRunning ? "🛑 STOP ZENITH" : "🚀 LAUNCH ELITE V4");
+        controlBtn.setText(isRunning ? "🛑 STOP SINGULARITY" : "🚀 LAUNCH SINGULARITY");
         if (isRunning) {
-            runAISensor(linkIn.getText().toString());
             runSingleBot(web1);
-            mHandler.postDelayed(() -> runSingleBot(web2), 6000);
-            mHandler.postDelayed(() -> runSingleBot(web3), 12000);
+            mHandler.postDelayed(() -> runSingleBot(web2), 5000);
+            mHandler.postDelayed(() -> runSingleBot(web3), 10000);
         }
     }
 
     private void runSingleBot(WebView wv) {
         if (!isRunning || PROXY_POOL.isEmpty()) return;
-
-        // ميزة تبديل البصمة كل 10 زيارات
-        deviceSwitchCounter++;
-        if (deviceSwitchCounter >= 10) {
-            currentFakeHardware = String.valueOf(rnd.nextBoolean() ? 4 : 12); // تبديل الرام عشوائياً
-            deviceSwitchCounter = 0;
-            mHandler.post(() -> aiStatusView.setText("🤖 AI: Hardware Identity Rotated"));
-        }
 
         String proxy = PROXY_POOL.remove(0);
         updateUI();
@@ -139,38 +132,34 @@ public class MainActivity extends Activity {
             ProxyController.getInstance().setProxyOverride(new ProxyConfig.Builder().addProxyRule(proxy).build(), r -> {}, () -> {});
         }
 
-        // بصمات أجهزة متغيرة باستمرار
-        String[] mobileModels = {
-            "Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/UD1A.230805.019) Chrome/126.0.0.0 Mobile Safari/537.36",
-            "Mozilla/5.0 (Linux; Android 13; SM-G998B Build/TP1A.220624.014) Chrome/125.0.0.0 Mobile Safari/537.36",
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) Version/17.5 Mobile/15E148 Safari/604.1"
-        };
-        wv.getSettings().setUserAgentString(mobileModels[rnd.nextInt(mobileModels.length)]);
+        // استخدام User-Agent حديث جداً متوافق مع البصمة المحقونة
+        wv.getSettings().setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36");
         
         Map<String, String> h = new HashMap<>();
-        h.put("X-Requested-With", "com.android.chrome");
-        h.put("Sec-Fetch-Site", "cross-site");
+        h.put("Sec-Ch-Ua-Platform", "\"Windows\"");
+        h.put("Referer", "https://www.google.com/"); // تزييف مصدر الزيارة
         
         wv.loadUrl(linkIn.getText().toString().trim(), h);
-        totalJumps++;
+        successCount++;
         
-        mHandler.postDelayed(() -> runSingleBot(wv), (35 + rnd.nextInt(30)) * 1000);
+        mHandler.postDelayed(() -> runSingleBot(wv), (40 + rnd.nextInt(30)) * 1000);
     }
 
     private void updateUI() {
         mHandler.post(() -> {
-            serverCountView.setText("🌐 INFINITY POOL: " + PROXY_POOL.size() + " [LIVE]");
-            dashView.setText("💰 Zenith Master | Total Jumps: " + totalJumps);
+            serverCountView.setText("🌐 SINGULARITY POOL: " + PROXY_POOL.size() + " [READY]");
+            dashView.setText("💰 Master Engine | Success: " + successCount);
         });
     }
 
-    private void startTurboScraping() {
+    private void startSingularityScraper() {
         String[] sources = {
-            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=3500&country=all",
+            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=2000&country=all",
             "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
             "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
             "https://proxyspace.pro/http.txt",
-            "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt"
+            "https://raw.githubusercontent.com/officialputuid/Proxy-List/master/http.txt",
+            "https://raw.githubusercontent.com/rdavydov/proxy-list/main/proxies/http.txt"
         };
         for (String url : sources) {
             scrapExec.execute(() -> {
@@ -180,7 +169,7 @@ public class MainActivity extends Activity {
                         BufferedReader r = new BufferedReader(new InputStreamReader(u.openStream()));
                         String l;
                         while ((l = r.readLine()) != null) { if (l.contains(":")) validateProxy(l.trim()); }
-                        Thread.sleep(40000); 
+                        Thread.sleep(30000); 
                     } catch (Exception e) {}
                 }
             });
@@ -194,7 +183,7 @@ public class MainActivity extends Activity {
                 HttpURLConnection c = (HttpURLConnection) new URL("https://www.google.com").openConnection(
                     new Proxy(Proxy.Type.HTTP, new InetSocketAddress(p[0], Integer.parseInt(p[1])))
                 );
-                c.setConnectTimeout(1000); // فلترة الخوادم الصاروخية فقط
+                c.setConnectTimeout(700); // فلترة "السرعة الضوئية" للقضاء على TIMED_OUT
                 if (c.getResponseCode() == 200) {
                     if (!PROXY_POOL.contains(a)) {
                         PROXY_POOL.add(a);
@@ -202,20 +191,6 @@ public class MainActivity extends Activity {
                     }
                 }
             } catch (Exception e) {}
-        });
-    }
-
-    private void runAISensor(String targetUrl) {
-        aiExec.execute(() -> {
-            try {
-                HttpURLConnection conn = (HttpURLConnection) new URL(targetUrl).openConnection();
-                conn.setConnectTimeout(5000);
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 Chrome/126.0.0.0");
-                conn.connect();
-                mHandler.post(() -> aiStatusView.setText("🤖 AI Zenith: Website Security Synced"));
-            } catch (Exception e) {
-                mHandler.post(() -> aiStatusView.setText("🤖 AI Zenith: Dynamic Mode On"));
-            }
         });
     }
             }
