@@ -5,7 +5,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
-// === استيرادات هامة جداً لمنع أخطاء البناء ===
+// استيرادات كاملة
 import android.webkit.CookieManager;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebResourceError;
@@ -14,11 +14,10 @@ import android.webkit.WebSettings;
 import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.net.http.SslError; // إصلاح خطأ Gradle
+import android.net.http.SslError;
 import androidx.webkit.ProxyConfig;
 import androidx.webkit.ProxyController;
 import androidx.webkit.WebViewFeature;
-// ==========================================
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -26,6 +25,7 @@ import android.widget.TextView;
 import android.view.ViewGroup;
 import android.widget.Toast;
 import android.view.WindowManager;
+import android.view.View; // مهم
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -50,7 +50,7 @@ public class MainActivity extends Activity {
     
     // === المحرك الخلفي ===
     private Handler mHandler = new Handler(Looper.getMainLooper());
-    private ExecutorService scrapExec = Executors.newFixedThreadPool(40); // زيادة الطاقة
+    private ExecutorService scrapExec = Executors.newFixedThreadPool(40); 
     private ExecutorService validExec = Executors.newFixedThreadPool(1200); 
     
     private Random rnd = new Random();
@@ -64,7 +64,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         
         try {
-            // تفعيل تسريع الهاردوير
+            // تفعيل الهاردوير
             getWindow().setFlags(
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
@@ -72,7 +72,7 @@ public class MainActivity extends Activity {
 
             setContentView(R.layout.activity_main);
             
-            // تشغيل الوحش فوراً
+            // بدء جلب البروكسي
             startMegaScraping(); 
 
             dashView = findViewById(R.id.dashboardView);
@@ -86,11 +86,11 @@ public class MainActivity extends Activity {
                 controlBtn.setOnClickListener(v -> toggleSystem());
             }
 
-            // تأخير بسيط لضمان استقرار النظام
-            mHandler.postDelayed(this::forceInitWebViews, 800);
+            // تشغيل إنشاء المتصفحات (Attach-First)
+            mHandler.postDelayed(this::forceInitWebViews, 500);
 
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::V10Atomic");
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::V11Attach");
 
         } catch (Exception e) {
             Toast.makeText(this, "Ui Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -103,32 +103,48 @@ public class MainActivity extends Activity {
                 CookieManager.getInstance().setAcceptCookie(true);
                 CookieManager.getInstance().setAcceptThirdPartyCookies(null, true);
                 
-                web1 = createSafeWebView();
-                web2 = createSafeWebView();
-                web3 = createSafeWebView();
+                // تنظيف الحاوية القديمة للتأكد
+                webContainer.removeAllViews();
                 
-                aiStatusView.setText("🛡️ V10 SYSTEM: ONLINE");
+                // الإنشاء والإضافة الفورية
+                web1 = createAndAttachWebView();
+                web2 = createAndAttachWebView();
+                web3 = createAndAttachWebView();
+                
+                aiStatusView.setText("🛡️ V11 ENGINE: ACTIVE");
             }
         } catch (Exception e) {
             aiStatusView.setText("Init Error: " + e.getMessage());
         }
     }
 
-    private WebView createSafeWebView() {
+    // 🔥 الدالة السحرية الجديدة: إضافة للشاشة قبل الإعدادات 🔥
+    private WebView createAndAttachWebView() {
         try {
-            // 🔥 التغيير الجذري: استخدام getApplicationContext() بدلاً من this
-            // هذا يحل مشكلة الانهيار في الهواتف العنيدة
-            WebView wv = new WebView(getApplicationContext());
+            // 1. إنشاء الكائن
+            WebView wv = new WebView(this);
             
+            // 2. إعداد الحجم
+            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
+            wv.setLayoutParams(p);
+            
+            // 3. 🔥 اللصق الفوري في الشاشة (هذا يحل مشكلة null reference) 🔥
+            webContainer.addView(wv);
+            
+            // 4. الآن يمكننا طلب الإعدادات بأمان
             if (wv != null) {
-                WebSettings s = wv.getSettings();
-                s.setJavaScriptEnabled(true);
-                s.setDomStorageEnabled(true);
-                s.setDatabaseEnabled(true);
-                s.setAllowFileAccess(false);
-                s.setGeolocationEnabled(false);
-                s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-                s.setLoadsImagesAutomatically(true);
+                try {
+                    WebSettings s = wv.getSettings(); // لن تنهار الآن لأنها متصلة بالشاشة
+                    s.setJavaScriptEnabled(true);
+                    s.setDomStorageEnabled(true);
+                    s.setDatabaseEnabled(true);
+                    s.setAllowFileAccess(false);
+                    s.setGeolocationEnabled(false);
+                    s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+                    s.setLoadsImagesAutomatically(true);
+                } catch (Exception ex) {
+                    // تجاهل فشل الإعدادات واستمر
+                }
                 
                 wv.setWebViewClient(new WebViewClient() {
                     Runnable timeoutRunnable = () -> {
@@ -182,23 +198,19 @@ public class MainActivity extends Activity {
                     
                     @Override
                     public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
-                        handler.proceed(); // تجاوز أخطاء SSL
+                        handler.proceed(); 
                     }
                 });
 
-                // إضافة المتصفح للشاشة
-                LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
-                wv.setLayoutParams(p);
-                webContainer.addView(wv);
                 return wv;
             }
         } catch (Exception e) {
-            // تجاهل الخطأ بصمت
+            // فشل الإنشاء
         }
         return null;
     }
 
-    // === دوال الذكاء ===
+    // === باقي الكود كما هو للحفاظ على الميزات ===
     private void injectFakeHistory(WebView v) {
         String js = "(function() { try { localStorage.setItem('user_consent', 'true'); document.cookie = 'CONSENT=YES+US.en+202201; path=/; domain=.google.com'; } catch(e) {} })();";
         v.evaluateJavascript(js, null);
@@ -263,7 +275,7 @@ public class MainActivity extends Activity {
 
     private void toggleSystem() {
         isRunning = !isRunning;
-        if (controlBtn != null) controlBtn.setText(isRunning ? "🛑 STOP" : "🚀 LAUNCH ZENITH V10");
+        if (controlBtn != null) controlBtn.setText(isRunning ? "🛑 STOP" : "🚀 LAUNCH ZENITH V11");
         
         if (isRunning) {
             if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
@@ -274,7 +286,7 @@ public class MainActivity extends Activity {
             if (web3 != null) { mHandler.postDelayed(() -> runSingleBot(web3), 4000); atLeastOneRunning = true; }
             
             if (!atLeastOneRunning) {
-                Toast.makeText(this, "Warning: WebViews Failed - Proxy Mode Only", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "⚠️ WebViews Failed - Mode: PROXY ONLY", Toast.LENGTH_SHORT).show();
             }
         } else {
             if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
@@ -312,9 +324,15 @@ public class MainActivity extends Activity {
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
             };
             
-            if (wv != null && wv.getSettings() != null) {
-                wv.getSettings().setUserAgentString(agents[rnd.nextInt(agents.length)]);
-                wv.loadUrl("https://www.google.com"); 
+            // تحقق أخير لتجنب الانهيار
+            try {
+                if (wv != null && wv.getSettings() != null) {
+                    wv.getSettings().setUserAgentString(agents[rnd.nextInt(agents.length)]);
+                    wv.loadUrl("https://www.google.com"); 
+                }
+            } catch (Exception ex) {
+                 // إذا فشل الإعداد، نحاول التحميل بدونه
+                 wv.loadUrl("https://www.google.com");
             }
             
             totalJumps++;
@@ -406,4 +424,4 @@ public class MainActivity extends Activity {
         scrapExec.shutdownNow();
         validExec.shutdownNow();
     }
-                                                                   }
+}
