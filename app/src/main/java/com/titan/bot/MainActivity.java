@@ -19,12 +19,9 @@ import androidx.webkit.ProxyController;
 import androidx.webkit.WebViewFeature;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.view.ViewGroup;
 import android.widget.Toast;
 import android.view.WindowManager;
-import android.view.View;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -32,30 +29,39 @@ import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.URL;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-    // === تعريف العناصر ===
+    // === العناصر ===
     private WebView web1, web2, web3;
     private Button controlBtn;
     private EditText linkIn;
     private TextView dashView, aiStatusView, serverCountView;
-    private LinearLayout webContainer;
     
-    // === المحرك الخلفي ===
+    // === المحركات الخلفية ===
     private Handler mHandler = new Handler(Looper.getMainLooper());
-    private ExecutorService scrapExec = Executors.newFixedThreadPool(40); 
-    private ExecutorService validExec = Executors.newFixedThreadPool(1200); 
+    // 1. محرك الجلب (The Harvester)
+    private ExecutorService scrapExec = Executors.newFixedThreadPool(50); 
+    // 2. محرك الفحص (The Judge)
+    private ExecutorService validExec = Executors.newFixedThreadPool(1000); 
     
     private Random rnd = new Random();
     private int totalJumps = 0;
     private boolean isRunning = false;
+    
+    // === الذاكرة الذكية ===
     private CopyOnWriteArrayList<String> PROXY_POOL = new CopyOnWriteArrayList<>();
+    // 3. القائمة السوداء (بوت الباند)
+    private Set<String> BLACKLIST = Collections.synchronizedSet(new HashSet<>());
+    
     private PowerManager.WakeLock wakeLock;
 
     @Override
@@ -70,8 +76,8 @@ public class MainActivity extends Activity {
 
             setContentView(R.layout.activity_main);
             
-            // تشغيل الوحش فوراً
-            startMegaScraping(); 
+            // تشغيل محرك الجلب العملاق
+            startMassiveScraping(); 
 
             // ربط العناصر
             dashView = findViewById(R.id.dashboardView);
@@ -79,10 +85,8 @@ public class MainActivity extends Activity {
             serverCountView = findViewById(R.id.serverCountView);
             linkIn = findViewById(R.id.linkInput);
             controlBtn = findViewById(R.id.controlButton);
-            webContainer = findViewById(R.id.webContainer);
 
-            // 🔥 الربط المباشر بالمتصفحات الموجودة في XML (الحل النهائي) 🔥
-            // لم نعد نستخدم new WebView() التي يرفضها هاتفك
+            // ربط المتصفحات (XML Inflation)
             web1 = findViewById(R.id.webview_1);
             web2 = findViewById(R.id.webview_2);
             web3 = findViewById(R.id.webview_3);
@@ -91,27 +95,25 @@ public class MainActivity extends Activity {
                 controlBtn.setOnClickListener(v -> toggleSystem());
             }
 
-            // تفعيل الكوكيز والإعدادات
             CookieManager.getInstance().setAcceptCookie(true);
             CookieManager.getInstance().setAcceptThirdPartyCookies(null, true);
             
-            // تهيئة المتصفحات الموجودة
-            setupHardwareWebView(web1);
-            setupHardwareWebView(web2);
-            setupHardwareWebView(web3);
+            // تهيئة المتصفحات
+            if(web1 != null) setupSmartWebView(web1);
+            if(web2 != null) setupSmartWebView(web2);
+            if(web3 != null) setupSmartWebView(web3);
 
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::V12Hardware");
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::V14Enterprise");
             
-            aiStatusView.setText("🛡️ V12 HARDWARE: LINKED");
+            aiStatusView.setText("🛡️ V14: BLACKLIST ENGINE ACTIVE");
 
         } catch (Exception e) {
-            Toast.makeText(this, "Ui Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
-    // دالة إعداد المتصفح الجاهز
-    private void setupHardwareWebView(WebView wv) {
+    private void setupSmartWebView(WebView wv) {
         if (wv == null) return;
         try {
             WebSettings s = wv.getSettings();
@@ -124,52 +126,21 @@ public class MainActivity extends Activity {
             s.setLoadsImagesAutomatically(true);
             
             wv.setWebViewClient(new WebViewClient() {
-                Runnable timeoutRunnable = () -> {
-                    if (wv != null) {
-                        mHandler.post(() -> aiStatusView.setText("⏳ Timeout -> Resetting..."));
-                        wv.stopLoading();
-                        handleFailure(wv, "Timeout");
-                    }
-                };
-
-                @Override
-                public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                    mHandler.removeCallbacks(timeoutRunnable);
-                    mHandler.postDelayed(timeoutRunnable, 30000); 
-                }
-
-                @Override
-                public void onPageFinished(WebView v, String url) {
-                    mHandler.removeCallbacks(timeoutRunnable);
-                    if (url.equals("about:blank")) return;
-
-                    injectStealthScripts(v);
-
-                    if (url.contains("google.com") || url.contains("bing.com")) {
-                        injectFakeHistory(v); 
-                        mHandler.postDelayed(() -> {
-                                String targetUrl = "";
-                                if(linkIn != null) targetUrl = linkIn.getText().toString().trim();
-                                if(targetUrl.isEmpty()) targetUrl = "https://www.google.com";
-                                
-                                Map<String, String> headers = new HashMap<>();
-                                headers.put("X-Requested-With", ""); 
-                                headers.put("Referer", "https://www.google.com/");
-                                
-                                if (v != null) v.loadUrl(targetUrl, headers);
-                                mHandler.post(() -> aiStatusView.setText("🚀 Moved to Target"));
-                        }, 4000); 
-                    } else {
-                        checkBanStatus(v, url);
-                    }
-                }
-
+                // عند حدوث خطأ اتصال (فشل البروكسي)
                 @Override
                 public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
                     if (req.isForMainFrame()) {
-                        mHandler.removeCallbacks(timeoutRunnable);
+                        String currentProxy = (String) v.getTag();
+                        if (currentProxy != null) {
+                            // إضافة للقائمة السوداء فوراً
+                            BLACKLIST.add(currentProxy);
+                            mHandler.post(() -> aiStatusView.setText("⛔ Banned Bad Proxy"));
+                        }
                         v.loadUrl("about:blank");
-                        handleFailure(v, "Conn Error");
+                        if (isRunning) {
+                            // المحاولة مرة أخرى فوراً
+                            mHandler.postDelayed(() -> runSingleBot(v), 500); 
+                        }
                     }
                 }
                 
@@ -177,11 +148,70 @@ public class MainActivity extends Activity {
                 public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                     handler.proceed(); 
                 }
+
+                @Override
+                public void onPageFinished(WebView v, String url) {
+                    if (url.equals("about:blank")) return;
+
+                    injectStealthScripts(v);
+
+                    if (url.contains("google.com")) {
+                        injectFakeHistory(v); 
+                        mHandler.postDelayed(() -> navigateToTarget(v), 2500); 
+                    } else {
+                        // هنا يعمل "بوت الباند"
+                        // يفحص محتوى الصفحة بحثاً عن رسائل الحظر
+                        checkBanStatus(v);
+                    }
+                }
             });
 
-        } catch (Exception e) {
-             aiStatusView.setText("HW Error: " + e.getMessage());
-        }
+        } catch (Exception e) {}
+    }
+
+    private void navigateToTarget(WebView v) {
+        String targetUrl = "";
+        if(linkIn != null) targetUrl = linkIn.getText().toString().trim();
+        if(targetUrl.isEmpty()) targetUrl = "https://www.google.com";
+        
+        Map<String, String> headers = new HashMap<>();
+        headers.put("X-Requested-With", ""); 
+        headers.put("Referer", "https://www.google.com/");
+        
+        if (v != null) v.loadUrl(targetUrl, headers);
+    }
+
+    // === بوت الباند (The Ban Bot) ===
+    private void checkBanStatus(WebView v) {
+        v.evaluateJavascript(
+            "(function() { " +
+            "   var body = document.body.innerText.toLowerCase(); " +
+            "   if (body.includes('access denied') || " +
+            "       body.includes('forbidden') || " +
+            "       body.includes('security check') || " +
+            "       body.includes('blocked') || " +
+            "       body.includes('captcha')) { " +
+            "       return 'BANNED'; " +
+            "   } return 'OK'; " +
+            "})();",
+            result -> {
+                if (result != null && result.contains("BANNED")) {
+                    // تم اكتشاف حظر!
+                    String currentProxy = (String) v.getTag();
+                    if (currentProxy != null) {
+                        BLACKLIST.add(currentProxy); // حظر الخادم للأبد
+                        mHandler.post(() -> aiStatusView.setText("🚫 Proxy Blacklisted!"));
+                    }
+                    // إعادة المحاولة بخادم جديد
+                    v.loadUrl("about:blank");
+                    mHandler.postDelayed(() -> runSingleBot(v), 1000);
+                } else {
+                    // خادم نظيف
+                    mHandler.post(() -> aiStatusView.setText("🟢 Safe Hit"));
+                    simulateHumanBehavior(v);
+                }
+            }
+        );
     }
 
     // === دوال الذكاء ===
@@ -196,45 +226,9 @@ public class MainActivity extends Activity {
             "   try {" +
             "       Object.defineProperty(navigator, 'webdriver', {get: () => undefined});" +
             "       Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});" +
-            "       var getParameter = WebGLRenderingContext.prototype.getParameter;" +
-            "       WebGLRenderingContext.prototype.getParameter = function(parameter) {" +
-            "           if (parameter === 37445) return 'Intel Inc.';" + 
-            "           if (parameter === 37446) return 'Intel(R) Iris(TM) Plus Graphics 640';" + 
-            "           return getParameter(parameter);" +
-            "       };" +
             "   } catch(e) {}" +
             "})();";
         v.evaluateJavascript(js, null);
-    }
-
-    private void checkBanStatus(WebView v, String url) {
-        v.evaluateJavascript(
-            "(function() { " +
-            "   var content = document.body.innerText.toLowerCase(); " +
-            "   if (content.includes('anonymous proxy') || content.includes('access denied')) { " +
-            "       return 'BLOCKED';" +
-            "   } else { " +
-            "       return 'OK';" +
-            "   } " +
-            "})();",
-            value -> {
-                if (value != null && value.contains("BLOCKED")) {
-                    handleFailure(v, "Banned"); 
-                } else {
-                    if (v != null) v.setTag(0); 
-                    simulateHumanBehavior(v);
-                    mHandler.post(() -> aiStatusView.setText("🟢 Success: " + url));
-                }
-            }
-        );
-    }
-
-    private void handleFailure(WebView v, String reason) {
-        if (v == null) return;
-        mHandler.post(() -> aiStatusView.setText("⛔ " + reason + " -> Skipping..."));
-        v.stopLoading();
-        v.loadUrl("about:blank");
-        mHandler.postDelayed(() -> runSingleBot(v), 1000);
     }
 
     private void simulateHumanBehavior(WebView v) {
@@ -249,41 +243,44 @@ public class MainActivity extends Activity {
 
     private void toggleSystem() {
         isRunning = !isRunning;
-        if (controlBtn != null) controlBtn.setText(isRunning ? "🛑 STOP" : "🚀 LAUNCH ZENITH V12");
+        if (controlBtn != null) controlBtn.setText(isRunning ? "🛑 STOP" : "🚀 LAUNCH V14");
         
         if (isRunning) {
             if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
-            
-            boolean atLeastOneRunning = false;
-            if (web1 != null) { runSingleBot(web1); atLeastOneRunning = true; }
-            if (web2 != null) { mHandler.postDelayed(() -> runSingleBot(web2), 2000); atLeastOneRunning = true; }
-            if (web3 != null) { mHandler.postDelayed(() -> runSingleBot(web3), 4000); atLeastOneRunning = true; }
-            
-            if (!atLeastOneRunning) {
-                Toast.makeText(this, "⚠️ HW WebViews Failed!", Toast.LENGTH_SHORT).show();
-            }
+            if (web1 != null) runSingleBot(web1);
+            if (web2 != null) mHandler.postDelayed(() -> runSingleBot(web2), 2000);
+            if (web3 != null) mHandler.postDelayed(() -> runSingleBot(web3), 4000);
         } else {
             if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         }
     }
 
     private void runSingleBot(WebView wv) {
-        if (wv == null) return;
+        if (wv == null || !isRunning) return;
         
-        wv.setTag(0);
-
-        if (!isRunning || PROXY_POOL.isEmpty()) {
-            if (isRunning) mHandler.postDelayed(() -> runSingleBot(wv), 3000);
+        if (PROXY_POOL.isEmpty()) {
+            mHandler.postDelayed(() -> runSingleBot(wv), 3000);
             return;
         }
 
         try {
             CookieManager.getInstance().removeAllCookies(null);
             WebStorage.getInstance().deleteAllData();
-            wv.clearCache(true);
             wv.clearHistory();
 
-            String proxy = PROXY_POOL.remove(0);
+            // سحب بروكسي عشوائي (لتجنب التكرار)
+            int index = rnd.nextInt(PROXY_POOL.size());
+            String proxy = PROXY_POOL.get(index);
+
+            // فحص القائمة السوداء قبل الاستخدام
+            if (BLACKLIST.contains(proxy)) {
+                PROXY_POOL.remove(index); // حذفه من القائمة النشطة
+                runSingleBot(wv); // جرب غيره فوراً
+                return;
+            }
+
+            // حفظ البروكسي الحالي في الوسم لمعرفة من نحظر لاحقاً
+            wv.setTag(proxy);
             updateUI();
 
             if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
@@ -292,36 +289,37 @@ public class MainActivity extends Activity {
                         .addProxyRule(proxy).build(), r -> {}, () -> {});
                 } catch (Exception e) {}
             }
-
-            String[] agents = {
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
-            };
             
-            // بما أن المتصفح موجود مسبقاً، لن يكون null أبداً
             if (wv.getSettings() != null) {
+                // تغيير عشوائي للمتصفح
+                String[] agents = {
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+                };
                 wv.getSettings().setUserAgentString(agents[rnd.nextInt(agents.length)]);
                 wv.loadUrl("https://www.google.com"); 
             }
             
             totalJumps++;
+            // التوقيت العشوائي
             mHandler.postDelayed(() -> runSingleBot(wv), (30 + rnd.nextInt(20)) * 1000);
 
         } catch (Exception e) {
-            mHandler.postDelayed(() -> runSingleBot(wv), 2000);
+            mHandler.postDelayed(() -> runSingleBot(wv), 1000);
         }
     }
 
     private void updateUI() {
         mHandler.post(() -> {
-            serverCountView.setText("🌐 Proxies: " + PROXY_POOL.size());
-            dashView.setText("💰 Jumps: " + totalJumps);
+            serverCountView.setText("🌐 Good IPs: " + PROXY_POOL.size());
+            dashView.setText("💰 Hits: " + totalJumps);
         });
     }
 
-    private void startMegaScraping() {
+    // === محرك الجلب العملاق (The Harvester) ===
+    private void startMassiveScraping() {
+        // مصادر ضخمة (يتم تحديثها يومياً)
         String[] sources = {
-            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=3000&country=all&ssl=all&anonymity=all",
             "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
             "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
             "https://raw.githubusercontent.com/officialputuid/KangProxy/KangProxy/http/http.txt",
@@ -346,16 +344,19 @@ public class MainActivity extends Activity {
             scrapExec.execute(() -> {
                 while (true) {
                     try {
-                        if (PROXY_POOL.size() > 8000) { Thread.sleep(20000); continue; }
+                        // حد أقصى للحفاظ على الذاكرة
+                        if (PROXY_POOL.size() > 10000) { Thread.sleep(60000); continue; }
+                        
                         URL u = new URL(url);
                         HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-                        conn.setConnectTimeout(8000); 
+                        conn.setConnectTimeout(10000); 
                         BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                         String l;
                         while ((l = r.readLine()) != null) { 
                             if (l.contains(":")) validateProxy(l.trim()); 
                         }
                         r.close();
+                        // انتظر 10 دقائق قبل إعادة الفحص
                         Thread.sleep(600000); 
                     } catch (Exception e) {
                         try { Thread.sleep(30000); } catch (Exception ex) {}
@@ -365,18 +366,24 @@ public class MainActivity extends Activity {
         }
     }
 
+    // === محرك الفلترة (The Judge) ===
     private void validateProxy(String a) {
+        // إذا كان محظوراً، لا تتعب نفسك بفحصه
+        if (BLACKLIST.contains(a)) return;
+
         validExec.execute(() -> {
             try {
                 String[] p = a.split(":");
                 HttpURLConnection c = (HttpURLConnection) new URL("https://www.google.com").openConnection(
                     new Proxy(Proxy.Type.HTTP, new InetSocketAddress(p[0], Integer.parseInt(p[1])))
                 );
-                c.setConnectTimeout(5000); 
-                c.setReadTimeout(5000);
-                c.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+                // المهلة المطلوبة: 20 ثانية (20000ms)
+                c.setConnectTimeout(20000); 
+                c.setReadTimeout(20000);
+                
+                // إذا استجاب خلال 20 ثانية فهو جيد
                 if (c.getResponseCode() == 200) {
-                    if (!PROXY_POOL.contains(a)) {
+                    if (!PROXY_POOL.contains(a) && !BLACKLIST.contains(a)) {
                         PROXY_POOL.add(a);
                         updateUI();
                     }
@@ -384,13 +391,5 @@ public class MainActivity extends Activity {
             } catch (Exception e) {}
         });
     }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        isRunning = false;
-        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
-        scrapExec.shutdownNow();
-        validExec.shutdownNow();
-    }
-                            }
+                        }
+                        
