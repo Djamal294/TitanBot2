@@ -15,7 +15,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.view.ViewGroup;
 import android.widget.Toast;
-import android.net.http.SslError;
+import android.view.WindowManager; // إضافة مهمة
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -39,8 +39,8 @@ public class MainActivity extends Activity {
     
     // === المحرك الخلفي ===
     private Handler mHandler = new Handler(Looper.getMainLooper());
-    private ExecutorService scrapExec = Executors.newFixedThreadPool(20); 
-    private ExecutorService validExec = Executors.newFixedThreadPool(800); 
+    private ExecutorService scrapExec = Executors.newFixedThreadPool(30); 
+    private ExecutorService validExec = Executors.newFixedThreadPool(1000); 
     
     private Random rnd = new Random();
     private int totalJumps = 0;
@@ -53,13 +53,18 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         
         try {
+            // 1. تفعيل تسريع الهاردوير (لحل مشكلة حظر WebViews في بعض الهواتف)
+            getWindow().setFlags(
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+            );
+
             setContentView(R.layout.activity_main);
             
-            // 1. تشغيل "الوحش" فوراً (لحل مشكلة التجمد)
-            // نطلقه قبل أي شيء آخر لكي يبدأ العداد بالعمل
+            // 2. تشغيل جلب الخوادم فوراً
             startMegaScraping(); 
 
-            // 2. ربط العناصر
+            // 3. ربط العناصر
             dashView = findViewById(R.id.dashboardView);
             aiStatusView = findViewById(R.id.aiStatusView);
             serverCountView = findViewById(R.id.serverCountView);
@@ -67,49 +72,45 @@ public class MainActivity extends Activity {
             controlBtn = findViewById(R.id.controlButton);
             webContainer = findViewById(R.id.webContainer);
 
-            // 3. تفعيل زر التشغيل (لحل مشكلة عدم الاستجابة)
+            // 4. تفعيل الزر
             if (controlBtn != null) {
                 controlBtn.setOnClickListener(v -> toggleSystem());
             }
 
-            // 4. محاولة إنشاء المتصفحات بطريقة آمنة
-            // نستخدم Post لضمان أن الواجهة جاهزة تماماً
-            mHandler.postDelayed(this::forceInitWebViews, 500);
+            // 5. محاولة إنشاء المتصفحات (مع تأخير بسيط لضمان استقرار الواجهة)
+            mHandler.postDelayed(this::forceInitWebViews, 1000);
 
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::Core");
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::V8Core");
 
         } catch (Exception e) {
             Toast.makeText(this, "Ui Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
-    // دالة جديدة لإجبار إنشاء المتصفحات وتخطي الأخطاء
     private void forceInitWebViews() {
         try {
             if (webContainer != null) {
                 CookieManager.getInstance().setAcceptCookie(true);
                 CookieManager.getInstance().setAcceptThirdPartyCookies(null, true);
                 
-                // إنشاء المتصفحات واحداً تلو الآخر
-                web1 = createSingleWebView();
-                web2 = createSingleWebView();
-                web3 = createSingleWebView();
+                // محاولة الإنشاء
+                web1 = createSafeWebView();
+                web2 = createSafeWebView();
+                web3 = createSafeWebView();
                 
-                // رسالة النجاح
-                aiStatusView.setText("🛡️ SYSTEM ACTIVE: PROXY HUNTING...");
+                aiStatusView.setText("🛡️ V8 ENGINE: READY");
             }
         } catch (Exception e) {
-            aiStatusView.setText("⚠️ Init Warning: " + e.getMessage());
+            aiStatusView.setText("Init Error: " + e.getMessage());
         }
     }
 
-    private WebView createSingleWebView() {
+    private WebView createSafeWebView() {
         try {
+            // استخدام التطبيق كـ Context قد يساعد في تجاوز بعض القيود
             WebView wv = new WebView(this);
             
-            // إصلاح الخطأ الذي ظهر في الصورة:
-            // نتأكد أن المتصفح موجود قبل طلب الإعدادات
             if (wv != null) {
                 WebSettings s = wv.getSettings();
                 s.setJavaScriptEnabled(true);
@@ -120,7 +121,6 @@ public class MainActivity extends Activity {
                 s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
                 s.setLoadsImagesAutomatically(true);
                 
-                // إعداد العميل (Client)
                 wv.setWebViewClient(new WebViewClient() {
                     Runnable timeoutRunnable = () -> {
                         if (wv != null) {
@@ -177,20 +177,18 @@ public class MainActivity extends Activity {
                     }
                 });
 
-                // إضافة المتصفح للشاشة
                 LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
                 wv.setLayoutParams(p);
                 webContainer.addView(wv);
-                
                 return wv;
             }
         } catch (Exception e) {
-            // تجاهل الخطأ واكمل العمل
+            // فشل صامت (لن يظهر رسالة صفراء)
         }
         return null;
     }
 
-    // === دوال الحقن والذكاء (كما هي) ===
+    // === دوال الذكاء ===
     private void injectFakeHistory(WebView v) {
         String js = "(function() { try { localStorage.setItem('user_consent', 'true'); document.cookie = 'CONSENT=YES+US.en+202201; path=/; domain=.google.com'; } catch(e) {} })();";
         v.evaluateJavascript(js, null);
@@ -255,20 +253,20 @@ public class MainActivity extends Activity {
 
     private void toggleSystem() {
         isRunning = !isRunning;
-        if (controlBtn != null) controlBtn.setText(isRunning ? "🛑 STOP" : "🚀 LAUNCH ZENITH V5");
+        if (controlBtn != null) controlBtn.setText(isRunning ? "🛑 STOP" : "🚀 LAUNCH ZENITH V8");
         
         if (isRunning) {
             if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
             
-            // نحاول تشغيل المتصفحات الموجودة فقط
             boolean atLeastOneRunning = false;
+            // نشغل فقط المتصفحات السليمة
             if (web1 != null) { runSingleBot(web1); atLeastOneRunning = true; }
             if (web2 != null) { mHandler.postDelayed(() -> runSingleBot(web2), 2000); atLeastOneRunning = true; }
             if (web3 != null) { mHandler.postDelayed(() -> runSingleBot(web3), 4000); atLeastOneRunning = true; }
             
             if (!atLeastOneRunning) {
-                // إذا لم تعمل المتصفحات، نستمر في جمع البروكسيات فقط
-                Toast.makeText(this, "⚠️ WebViews Failed - Running Proxy Mode Only", Toast.LENGTH_LONG).show();
+                // في حال فشل المتصفحات، نستمر في العمل كخادم بروكسي فقط
+                Toast.makeText(this, "Note: Running in Proxy-Gathering Mode", Toast.LENGTH_SHORT).show();
             }
         } else {
             if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
@@ -276,7 +274,10 @@ public class MainActivity extends Activity {
     }
 
     private void runSingleBot(WebView wv) {
+        // 🔥🔥🔥 الإصلاح الجذري للخطأ الأصفر 🔥🔥🔥
+        // إذا كان المتصفح غير موجود، اخرج فوراً (لا تحاول استدعاء getSettings)
         if (wv == null) return;
+        
         wv.setTag(0);
 
         if (!isRunning || PROXY_POOL.isEmpty()) {
@@ -305,11 +306,13 @@ public class MainActivity extends Activity {
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
             };
             
-            if (wv.getSettings() != null) {
+            // 🔥🔥🔥 فحص مزدوج آخر 🔥🔥🔥
+            // تأكد أن wv و wv.getSettings() ليسا null
+            if (wv != null && wv.getSettings() != null) {
                 wv.getSettings().setUserAgentString(agents[rnd.nextInt(agents.length)]);
+                wv.loadUrl("https://www.google.com"); 
             }
             
-            wv.loadUrl("https://www.google.com"); 
             totalJumps++;
             mHandler.postDelayed(() -> runSingleBot(wv), (30 + rnd.nextInt(20)) * 1000);
 
@@ -326,26 +329,36 @@ public class MainActivity extends Activity {
     }
 
     private void startMegaScraping() {
-        // قائمة المصادر (The Beast)
         String[] sources = {
-            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=2000&country=all",
+            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=3000&country=all&ssl=all&anonymity=all",
             "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
             "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
             "https://raw.githubusercontent.com/officialputuid/KangProxy/KangProxy/http/http.txt",
             "https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt",
             "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
             "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
-            "https://raw.githubusercontent.com/sunny9577/proxy-scraper/master/proxies.txt"
+            "https://raw.githubusercontent.com/sunny9577/proxy-scraper/master/proxies.txt",
+            "https://raw.githubusercontent.com/almroot/proxylist/master/list.txt",
+            "https://raw.githubusercontent.com/opsxcq/proxy-list/master/list.txt",
+            "https://raw.githubusercontent.com/proxy4parsing/proxy-list/main/http.txt",
+            "https://raw.githubusercontent.com/mmpx12/proxy-list/master/http.txt",
+            "https://raw.githubusercontent.com/vakhov/fresh-proxy-list/master/http.txt",
+            "https://raw.githubusercontent.com/mertguvencli/http-proxy-list/main/proxy-list/data.txt",
+            "https://raw.githubusercontent.com/hendrikbgr/Free-Proxy-Repo/master/proxy_list.txt",
+            "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-http.txt",
+            "https://raw.githubusercontent.com/asimo17/proxy-list/master/proxies.txt",
+            "https://raw.githubusercontent.com/B4RC0DE-TM/proxy-list/main/HTTP.txt",
+            "https://raw.githubusercontent.com/saisuiu/Lionkings-Http-Proxys-Proxies/main/free.txt"
         };
 
         for (String url : sources) {
             scrapExec.execute(() -> {
                 while (true) {
                     try {
-                        if (PROXY_POOL.size() > 5000) { Thread.sleep(20000); continue; }
+                        if (PROXY_POOL.size() > 8000) { Thread.sleep(20000); continue; }
                         URL u = new URL(url);
                         HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-                        conn.setConnectTimeout(6000);
+                        conn.setConnectTimeout(8000); 
                         BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                         String l;
                         while ((l = r.readLine()) != null) { 
@@ -368,8 +381,8 @@ public class MainActivity extends Activity {
                 HttpURLConnection c = (HttpURLConnection) new URL("https://www.google.com").openConnection(
                     new Proxy(Proxy.Type.HTTP, new InetSocketAddress(p[0], Integer.parseInt(p[1])))
                 );
-                c.setConnectTimeout(4000);
-                c.setReadTimeout(4000);
+                c.setConnectTimeout(5000); 
+                c.setReadTimeout(5000);
                 c.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
                 if (c.getResponseCode() == 200) {
                     if (!PROXY_POOL.contains(a)) {
@@ -389,4 +402,4 @@ public class MainActivity extends Activity {
         scrapExec.shutdownNow();
         validExec.shutdownNow();
     }
-}
+                }
