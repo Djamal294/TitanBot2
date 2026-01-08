@@ -24,19 +24,16 @@ import android.widget.Toast;
 import android.view.WindowManager;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 
 public class MainActivity extends Activity {
     
     private List<String> ACTIVE_PROXIES = new ArrayList<>();
 
-    // قائمة هواتف حديثة (تمويه كامل)
+    // قائمة هواتف حقيقية جداً
     private final String[] USER_AGENTS = {
         "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36", 
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
         "Mozilla/5.0 (Linux; Android 13; SM-A536B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36"
     };
 
@@ -54,11 +51,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
         try {
             getWindow().setFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
             setContentView(R.layout.activity_main);
 
             dashView = findViewById(R.id.dashboardView);
@@ -66,57 +61,52 @@ public class MainActivity extends Activity {
             linkIn = findViewById(R.id.linkInput);
             proxyInputBox = findViewById(R.id.proxyInputBox);
             controlBtn = findViewById(R.id.controlButton);
-
             web1 = findViewById(R.id.webview_1);
             web2 = findViewById(R.id.webview_2);
             web3 = findViewById(R.id.webview_3);
 
             controlBtn.setOnClickListener(v -> toggleSystem());
-
             CookieManager.getInstance().setAcceptCookie(true);
             
-            if(web1 != null) setupNuclearWeb(web1);
-            if(web2 != null) setupNuclearWeb(web2);
-            if(web3 != null) setupNuclearWeb(web3);
+            if(web1 != null) setupDirectWeb(web1);
+            if(web2 != null) setupDirectWeb(web2);
+            if(web3 != null) setupDirectWeb(web3);
 
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::V26Nuclear");
-
-        } catch (Exception e) {
-            Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
-        }
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::V27Direct");
+        } catch (Exception e) {}
     }
 
-    private void setupNuclearWeb(WebView wv) {
+    private void setupDirectWeb(WebView wv) {
         if (wv == null) return;
         try {
             WebSettings s = wv.getSettings();
             s.setJavaScriptEnabled(true);
             s.setDomStorageEnabled(true);
             s.setDatabaseEnabled(true);
-            s.setMediaPlaybackRequiresUserGesture(false);
             
             wv.setWebViewClient(new WebViewClient() {
                 @Override
                 public void onPageFinished(WebView v, String url) {
-                    injectStealth(v); // حقن التخفي
+                    injectSuperStealth(v); // تشغيل التخفي
                     
-                    if (url.contains("google.com")) {
-                        // الانتظار قليلاً للتأكد من التخفي
-                        mHandler.postDelayed(() -> navigateToTarget(v), 2500);
-                    } else if (!url.equals("about:blank") && !url.contains("captcha")) {
-                        mHandler.post(() -> {
-                            dashView.setText("💰 Hits: " + (++totalJumps));
-                            aiStatusView.setText("🛡️ V26 Secured Hit");
-                        });
-                        simulateHuman(v);
+                    if (!url.equals("about:blank")) {
+                        if (url.contains("google")) {
+                            // لن ننتظر في جوجل، سننتقل فوراً
+                            navigateToTarget(v); 
+                        } else {
+                            mHandler.post(() -> {
+                                dashView.setText("💰 Hits: " + (++totalJumps));
+                                aiStatusView.setText("⚡ V27 Direct Hit");
+                            });
+                            simulateHuman(v);
+                        }
                     }
                 }
 
                 @Override
                 public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
                     if (req.isForMainFrame()) {
-                        // إذا فشل، نظف وأعد المحاولة
                         v.loadUrl("about:blank");
                         if (isRunning) mHandler.postDelayed(() -> runSingleBot(v), 1000);
                     }
@@ -125,25 +115,20 @@ public class MainActivity extends Activity {
         } catch (Exception e) {}
     }
 
-    // 🔥 V26: الحقن النووي (إخفاء كامل) 🔥
-    private void injectStealth(WebView v) {
+    // 🔥 V27: التخفي المباشر بدون إحالة 🔥
+    private void injectSuperStealth(WebView v) {
         String js = "javascript:(function() {" +
-            // 1. قتل WebRTC (أهم خطوة)
-            "const rtcBlock = {value: undefined, writable: false};" +
-            "Object.defineProperty(window, 'RTCPeerConnection', rtcBlock);" +
-            "Object.defineProperty(window, 'webkitRTCPeerConnection', rtcBlock);" +
-            "Object.defineProperty(window, 'mozRTCPeerConnection', rtcBlock);" +
+            // حجب WebRTC بقوة أكبر
+            "const rtc = {value: undefined, writable: false, configurable: false};" +
+            "try { Object.defineProperty(window, 'RTCPeerConnection', rtc); } catch(e){}" +
+            "try { Object.defineProperty(window, 'webkitRTCPeerConnection', rtc); } catch(e){}" +
             
-            // 2. إخفاء البوت
-            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});" +
+            // إخفاء الـ WebDriver
+            "try { Object.defineProperty(navigator, 'webdriver', {get: () => false}); } catch(e){}" +
             
-            // 3. تزييف الإضافات واللغات
-            "Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});" +
-            "Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});" +
-            
-            // 4. تزييف دقة الشاشة العشوائية
-            "Object.defineProperty(screen, 'height', {get: () => 800 + Math.floor(Math.random() * 100)});" +
-            "Object.defineProperty(screen, 'width', {get: () => 360 + Math.floor(Math.random() * 50)});" +
+            // تزييف الخصائص لتبدو كإنسان
+            "try { Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3]}); } catch(e){}" +
+            "try { Object.defineProperty(navigator, 'languages', {get: () => ['en-US']}); } catch(e){}" +
             "})()";
         v.evaluateJavascript(js, null);
     }
@@ -152,18 +137,16 @@ public class MainActivity extends Activity {
         String targetUrl = "";
         if(linkIn != null) targetUrl = linkIn.getText().toString().trim();
         
+        // الدخول المباشر (بدون Headers) لتجنب الشكوك
         if(!targetUrl.isEmpty() && v != null) {
-            // إرسال "قوقل" كمصدر للزيارة
-            Map<String, String> headers = new HashMap<>();
-            headers.put("Referer", "https://www.google.com/");
-            v.loadUrl(targetUrl, headers);
+             v.loadUrl(targetUrl);
         }
     }
 
     private void simulateHuman(WebView v) {
         v.evaluateJavascript("(function(){" +
-            "   var interval = setInterval(function(){ window.scrollBy(0, 10 + Math.random()*20); }, 400);" +
-            "   setTimeout(function(){ clearInterval(interval); document.body.click(); }, 3500);" +
+            "   setInterval(function(){ window.scrollBy(0, 20); }, 200);" + // تمرير بطيء
+            "   setTimeout(function(){ document.body.click(); }, 3000);" +
             "})()", null);
     }
 
@@ -178,14 +161,11 @@ public class MainActivity extends Activity {
                     ACTIVE_PROXIES.add(clean);
                 }
             }
-            if (ACTIVE_PROXIES.isEmpty()) {
-                Toast.makeText(this, "⚠️ Paste Proxies First!", Toast.LENGTH_SHORT).show();
-                return;
-            }
+            if (ACTIVE_PROXIES.isEmpty()) return;
         }
 
         isRunning = !isRunning;
-        controlBtn.setText(isRunning ? "🛑 STOP" : "☢️ LAUNCH V26");
+        controlBtn.setText(isRunning ? "🛑 STOP" : "⚡ START V27");
         
         if (isRunning) {
             if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
@@ -201,16 +181,12 @@ public class MainActivity extends Activity {
         if (wv == null || !isRunning || ACTIVE_PROXIES.isEmpty()) return;
 
         try {
-            // تنظيف عميق جداً
             CookieManager.getInstance().removeAllCookies(null);
             WebStorage.getInstance().deleteAllData();
             wv.clearHistory();
             wv.clearCache(true);
-            wv.clearFormData();
 
             String proxy = ACTIVE_PROXIES.get(rnd.nextInt(ACTIVE_PROXIES.size()));
-            
-            // تغيير هوية عشوائي
             String randomAgent = USER_AGENTS[rnd.nextInt(USER_AGENTS.length)];
             wv.getSettings().setUserAgentString(randomAgent);
 
@@ -219,13 +195,15 @@ public class MainActivity extends Activity {
                     .addProxyRule(proxy).build(), r -> {}, () -> {});
             }
             
-            // البداية دائماً قوقل
-            wv.loadUrl("https://www.google.com");
+            // محاولة الدخول المباشر للهدف (تخطي جوجل)
+            String targetUrl = linkIn.getText().toString().trim();
+            if(targetUrl.isEmpty()) targetUrl = "https://www.google.com";
             
-            // 35 ثانية لكل دورة (لإعطاء وقت للإعلان)
+            wv.loadUrl(targetUrl);
+            
             mHandler.postDelayed(() -> {
                 if(isRunning && wv.getProgress() == 100) runSingleBot(wv);
-            }, 35000); 
+            }, 30000); 
 
         } catch (Exception e) {
             mHandler.postDelayed(() -> runSingleBot(wv), 1000);
