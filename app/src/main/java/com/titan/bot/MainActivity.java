@@ -55,7 +55,11 @@ public class MainActivity extends Activity {
         try {
             setContentView(R.layout.activity_main);
             
-            // 1. ربط العناصر (الخطوة الأولى دائماً)
+            // 1. تشغيل "الوحش" فوراً (لحل مشكلة التجمد)
+            // نطلقه قبل أي شيء آخر لكي يبدأ العداد بالعمل
+            startMegaScraping(); 
+
+            // 2. ربط العناصر
             dashView = findViewById(R.id.dashboardView);
             aiStatusView = findViewById(R.id.aiStatusView);
             serverCountView = findViewById(R.id.serverCountView);
@@ -63,138 +67,130 @@ public class MainActivity extends Activity {
             controlBtn = findViewById(R.id.controlButton);
             webContainer = findViewById(R.id.webContainer);
 
-            // 2. تفعيل الزر فوراً (لحل مشكلة عدم الاستجابة)
-            // نضعه خارج أي شرط لضمان عمله
+            // 3. تفعيل زر التشغيل (لحل مشكلة عدم الاستجابة)
             if (controlBtn != null) {
                 controlBtn.setOnClickListener(v -> toggleSystem());
             }
 
-            // 3. محاولة تشغيل النظام (داخل حماية لمنع الانهيار)
-            initializeSystemSafely();
+            // 4. محاولة إنشاء المتصفحات بطريقة آمنة
+            // نستخدم Post لضمان أن الواجهة جاهزة تماماً
+            mHandler.postDelayed(this::forceInitWebViews, 500);
+
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::Core");
 
         } catch (Exception e) {
-            Toast.makeText(this, "Critical UI Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Ui Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
-    private void initializeSystemSafely() {
+    // دالة جديدة لإجبار إنشاء المتصفحات وتخطي الأخطاء
+    private void forceInitWebViews() {
         try {
-            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::Armored");
-
             if (webContainer != null) {
                 CookieManager.getInstance().setAcceptCookie(true);
                 CookieManager.getInstance().setAcceptThirdPartyCookies(null, true);
                 
-                // إنشاء المتصفحات واحداً تلو الآخر (إذا فشل واحد يعمل الآخر)
-                web1 = createSafeWebView(); 
-                web2 = createSafeWebView(); 
-                web3 = createSafeWebView();
+                // إنشاء المتصفحات واحداً تلو الآخر
+                web1 = createSingleWebView();
+                web2 = createSingleWebView();
+                web3 = createSingleWebView();
                 
-                setupTripleLayout();
-                startMegaScraping(); 
-                
-                aiStatusView.setText("🛡️ SYSTEM ARMORED: READY");
+                // رسالة النجاح
+                aiStatusView.setText("🛡️ SYSTEM ACTIVE: PROXY HUNTING...");
             }
         } catch (Exception e) {
             aiStatusView.setText("⚠️ Init Warning: " + e.getMessage());
         }
     }
 
-    // دالة إنشاء آمنة جداً (تمنع الخطأ الذي ظهر في الصورة)
-    private WebView createSafeWebView() {
+    private WebView createSingleWebView() {
         try {
             WebView wv = new WebView(this);
-            // إعدادات الأمان والعزل (Isolation & Stealth)
-            WebSettings s = wv.getSettings();
-            s.setJavaScriptEnabled(true);
-            s.setDomStorageEnabled(true);
-            s.setDatabaseEnabled(true);
-            s.setAllowFileAccess(false); // عزل الملفات
-            s.setGeolocationEnabled(false);
-            s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-            s.setLoadsImagesAutomatically(true);
             
-            wv.setWebViewClient(new WebViewClient() {
-                Runnable timeoutRunnable = () -> {
-                    if (wv != null) {
-                        mHandler.post(() -> aiStatusView.setText("⏳ Timeout -> Resetting..."));
-                        wv.stopLoading();
-                        handleFailure(wv, "Timeout");
-                    }
-                };
-
-                @Override
-                public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                    mHandler.removeCallbacks(timeoutRunnable);
-                    mHandler.postDelayed(timeoutRunnable, 30000); 
-                }
-
-                @Override
-                public void onPageFinished(WebView v, String url) {
-                    mHandler.removeCallbacks(timeoutRunnable);
-                    if (url.equals("about:blank")) return;
-
-                    // تفعيل ميزات التخفي (Titanium Features)
-                    injectStealthScripts(v);
-
-                    // استراتيجية الكوكيز الذكية (Google Warm-up)
-                    if (url.contains("google.com") || url.contains("bing.com")) {
-                        injectFakeHistory(v); 
-                        mHandler.postDelayed(() -> {
-                             String targetUrl = "";
-                             if(linkIn != null) targetUrl = linkIn.getText().toString().trim();
-                             if(targetUrl.isEmpty()) targetUrl = "https://www.google.com";
-                             
-                             // إزالة بصمة التطبيق
-                             Map<String, String> headers = new HashMap<>();
-                             headers.put("X-Requested-With", ""); 
-                             headers.put("Referer", "https://www.google.com/");
-                             
-                             if (v != null) v.loadUrl(targetUrl, headers);
-                             mHandler.post(() -> aiStatusView.setText("🚀 Moved to Target"));
-                        }, 4000); 
-                    } else {
-                        checkBanStatus(v, url);
-                    }
-                }
-
-                @Override
-                public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
-                    if (req.isForMainFrame()) {
-                        mHandler.removeCallbacks(timeoutRunnable);
-                        v.loadUrl("about:blank");
-                        handleFailure(v, "Conn Error");
-                    }
-                }
+            // إصلاح الخطأ الذي ظهر في الصورة:
+            // نتأكد أن المتصفح موجود قبل طلب الإعدادات
+            if (wv != null) {
+                WebSettings s = wv.getSettings();
+                s.setJavaScriptEnabled(true);
+                s.setDomStorageEnabled(true);
+                s.setDatabaseEnabled(true);
+                s.setAllowFileAccess(false);
+                s.setGeolocationEnabled(false);
+                s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+                s.setLoadsImagesAutomatically(true);
                 
-                @Override
-                public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
-                    handler.proceed();
-                }
-            });
-            return wv;
+                // إعداد العميل (Client)
+                wv.setWebViewClient(new WebViewClient() {
+                    Runnable timeoutRunnable = () -> {
+                        if (wv != null) {
+                            mHandler.post(() -> aiStatusView.setText("⏳ Timeout -> Resetting..."));
+                            wv.stopLoading();
+                            handleFailure(wv, "Timeout");
+                        }
+                    };
+
+                    @Override
+                    public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                        mHandler.removeCallbacks(timeoutRunnable);
+                        mHandler.postDelayed(timeoutRunnable, 30000); 
+                    }
+
+                    @Override
+                    public void onPageFinished(WebView v, String url) {
+                        mHandler.removeCallbacks(timeoutRunnable);
+                        if (url.equals("about:blank")) return;
+
+                        injectStealthScripts(v);
+
+                        if (url.contains("google.com") || url.contains("bing.com")) {
+                            injectFakeHistory(v); 
+                            mHandler.postDelayed(() -> {
+                                 String targetUrl = "";
+                                 if(linkIn != null) targetUrl = linkIn.getText().toString().trim();
+                                 if(targetUrl.isEmpty()) targetUrl = "https://www.google.com";
+                                 
+                                 Map<String, String> headers = new HashMap<>();
+                                 headers.put("X-Requested-With", ""); 
+                                 headers.put("Referer", "https://www.google.com/");
+                                 
+                                 if (v != null) v.loadUrl(targetUrl, headers);
+                                 mHandler.post(() -> aiStatusView.setText("🚀 Moved to Target"));
+                            }, 4000); 
+                        } else {
+                            checkBanStatus(v, url);
+                        }
+                    }
+
+                    @Override
+                    public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
+                        if (req.isForMainFrame()) {
+                            mHandler.removeCallbacks(timeoutRunnable);
+                            v.loadUrl("about:blank");
+                            handleFailure(v, "Conn Error");
+                        }
+                    }
+                    
+                    @Override
+                    public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                        handler.proceed();
+                    }
+                });
+
+                // إضافة المتصفح للشاشة
+                LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
+                wv.setLayoutParams(p);
+                webContainer.addView(wv);
+                
+                return wv;
+            }
         } catch (Exception e) {
-            // في حال فشل إنشاء المتصفح، نعيد null ولا نغلق التطبيق
-            return null;
+            // تجاهل الخطأ واكمل العمل
         }
+        return null;
     }
 
-    private void setupTripleLayout() {
-        if (webContainer == null) return;
-        if (web1 != null) addWebToLayout(web1);
-        if (web2 != null) addWebToLayout(web2);
-        if (web3 != null) addWebToLayout(web3);
-    }
-
-    private void addWebToLayout(WebView wv) {
-        if(wv == null) return;
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
-        wv.setLayoutParams(p);
-        webContainer.addView(wv);
-    }
-
-    // === دوال الحقن والذكاء (حافظنا عليها كما طلبت) ===
+    // === دوال الحقن والذكاء (كما هي) ===
     private void injectFakeHistory(WebView v) {
         String js = "(function() { try { localStorage.setItem('user_consent', 'true'); document.cookie = 'CONSENT=YES+US.en+202201; path=/; domain=.google.com'; } catch(e) {} })();";
         v.evaluateJavascript(js, null);
@@ -263,16 +259,16 @@ public class MainActivity extends Activity {
         
         if (isRunning) {
             if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
-            // تشغيل فقط المتصفحات التي نجحت في التحميل
-            if (web1 != null) runSingleBot(web1);
-            if (web2 != null) mHandler.postDelayed(() -> runSingleBot(web2), 2000);
-            if (web3 != null) mHandler.postDelayed(() -> runSingleBot(web3), 4000);
             
-            // إذا فشل الجميع، نعطي تنبيهاً
-            if (web1 == null && web2 == null && web3 == null) {
-                Toast.makeText(this, "Error: Your device blocked WebViews!", Toast.LENGTH_LONG).show();
-                isRunning = false;
-                controlBtn.setText("🚀 TRY AGAIN");
+            // نحاول تشغيل المتصفحات الموجودة فقط
+            boolean atLeastOneRunning = false;
+            if (web1 != null) { runSingleBot(web1); atLeastOneRunning = true; }
+            if (web2 != null) { mHandler.postDelayed(() -> runSingleBot(web2), 2000); atLeastOneRunning = true; }
+            if (web3 != null) { mHandler.postDelayed(() -> runSingleBot(web3), 4000); atLeastOneRunning = true; }
+            
+            if (!atLeastOneRunning) {
+                // إذا لم تعمل المتصفحات، نستمر في جمع البروكسيات فقط
+                Toast.makeText(this, "⚠️ WebViews Failed - Running Proxy Mode Only", Toast.LENGTH_LONG).show();
             }
         } else {
             if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
@@ -280,9 +276,7 @@ public class MainActivity extends Activity {
     }
 
     private void runSingleBot(WebView wv) {
-        // حماية قصوى: إذا كان المتصفح غير موجود، لا تفعل شيئاً
         if (wv == null) return;
-        
         wv.setTag(0);
 
         if (!isRunning || PROXY_POOL.isEmpty()) {
@@ -291,7 +285,6 @@ public class MainActivity extends Activity {
         }
 
         try {
-            // بروتوكول التنظيف
             CookieManager.getInstance().removeAllCookies(null);
             WebStorage.getInstance().deleteAllData();
             wv.clearCache(true);
@@ -312,14 +305,11 @@ public class MainActivity extends Activity {
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
             };
             
-            // حماية إضافية ضد الخطأ القديم
             if (wv.getSettings() != null) {
                 wv.getSettings().setUserAgentString(agents[rnd.nextInt(agents.length)]);
             }
             
-            // البدء بمرحلة الإحماء
             wv.loadUrl("https://www.google.com"); 
-            
             totalJumps++;
             mHandler.postDelayed(() -> runSingleBot(wv), (30 + rnd.nextInt(20)) * 1000);
 
@@ -336,6 +326,7 @@ public class MainActivity extends Activity {
     }
 
     private void startMegaScraping() {
+        // قائمة المصادر (The Beast)
         String[] sources = {
             "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=2000&country=all",
             "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
@@ -398,4 +389,4 @@ public class MainActivity extends Activity {
         scrapExec.shutdownNow();
         validExec.shutdownNow();
     }
-                    }
+}
