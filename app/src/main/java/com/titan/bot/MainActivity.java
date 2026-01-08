@@ -5,7 +5,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
-// استيرادات كاملة
 import android.webkit.CookieManager;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebResourceError;
@@ -25,7 +24,7 @@ import android.widget.TextView;
 import android.view.ViewGroup;
 import android.widget.Toast;
 import android.view.WindowManager;
-import android.view.View; // مهم
+import android.view.View;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -64,7 +63,6 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         
         try {
-            // تفعيل الهاردوير
             getWindow().setFlags(
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
@@ -72,9 +70,10 @@ public class MainActivity extends Activity {
 
             setContentView(R.layout.activity_main);
             
-            // بدء جلب البروكسي
+            // تشغيل الوحش فوراً
             startMegaScraping(); 
 
+            // ربط العناصر
             dashView = findViewById(R.id.dashboardView);
             aiStatusView = findViewById(R.id.aiStatusView);
             serverCountView = findViewById(R.id.serverCountView);
@@ -82,135 +81,110 @@ public class MainActivity extends Activity {
             controlBtn = findViewById(R.id.controlButton);
             webContainer = findViewById(R.id.webContainer);
 
+            // 🔥 الربط المباشر بالمتصفحات الموجودة في XML (الحل النهائي) 🔥
+            // لم نعد نستخدم new WebView() التي يرفضها هاتفك
+            web1 = findViewById(R.id.webview_1);
+            web2 = findViewById(R.id.webview_2);
+            web3 = findViewById(R.id.webview_3);
+
             if (controlBtn != null) {
                 controlBtn.setOnClickListener(v -> toggleSystem());
             }
 
-            // تشغيل إنشاء المتصفحات (Attach-First)
-            mHandler.postDelayed(this::forceInitWebViews, 500);
+            // تفعيل الكوكيز والإعدادات
+            CookieManager.getInstance().setAcceptCookie(true);
+            CookieManager.getInstance().setAcceptThirdPartyCookies(null, true);
+            
+            // تهيئة المتصفحات الموجودة
+            setupHardwareWebView(web1);
+            setupHardwareWebView(web2);
+            setupHardwareWebView(web3);
 
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::V11Attach");
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::V12Hardware");
+            
+            aiStatusView.setText("🛡️ V12 HARDWARE: LINKED");
 
         } catch (Exception e) {
             Toast.makeText(this, "Ui Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
-    private void forceInitWebViews() {
+    // دالة إعداد المتصفح الجاهز
+    private void setupHardwareWebView(WebView wv) {
+        if (wv == null) return;
         try {
-            if (webContainer != null) {
-                CookieManager.getInstance().setAcceptCookie(true);
-                CookieManager.getInstance().setAcceptThirdPartyCookies(null, true);
-                
-                // تنظيف الحاوية القديمة للتأكد
-                webContainer.removeAllViews();
-                
-                // الإنشاء والإضافة الفورية
-                web1 = createAndAttachWebView();
-                web2 = createAndAttachWebView();
-                web3 = createAndAttachWebView();
-                
-                aiStatusView.setText("🛡️ V11 ENGINE: ACTIVE");
-            }
-        } catch (Exception e) {
-            aiStatusView.setText("Init Error: " + e.getMessage());
-        }
-    }
+            WebSettings s = wv.getSettings();
+            s.setJavaScriptEnabled(true);
+            s.setDomStorageEnabled(true);
+            s.setDatabaseEnabled(true);
+            s.setAllowFileAccess(false);
+            s.setGeolocationEnabled(false);
+            s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+            s.setLoadsImagesAutomatically(true);
+            
+            wv.setWebViewClient(new WebViewClient() {
+                Runnable timeoutRunnable = () -> {
+                    if (wv != null) {
+                        mHandler.post(() -> aiStatusView.setText("⏳ Timeout -> Resetting..."));
+                        wv.stopLoading();
+                        handleFailure(wv, "Timeout");
+                    }
+                };
 
-    // 🔥 الدالة السحرية الجديدة: إضافة للشاشة قبل الإعدادات 🔥
-    private WebView createAndAttachWebView() {
-        try {
-            // 1. إنشاء الكائن
-            WebView wv = new WebView(this);
-            
-            // 2. إعداد الحجم
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
-            wv.setLayoutParams(p);
-            
-            // 3. 🔥 اللصق الفوري في الشاشة (هذا يحل مشكلة null reference) 🔥
-            webContainer.addView(wv);
-            
-            // 4. الآن يمكننا طلب الإعدادات بأمان
-            if (wv != null) {
-                try {
-                    WebSettings s = wv.getSettings(); // لن تنهار الآن لأنها متصلة بالشاشة
-                    s.setJavaScriptEnabled(true);
-                    s.setDomStorageEnabled(true);
-                    s.setDatabaseEnabled(true);
-                    s.setAllowFileAccess(false);
-                    s.setGeolocationEnabled(false);
-                    s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-                    s.setLoadsImagesAutomatically(true);
-                } catch (Exception ex) {
-                    // تجاهل فشل الإعدادات واستمر
+                @Override
+                public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                    mHandler.removeCallbacks(timeoutRunnable);
+                    mHandler.postDelayed(timeoutRunnable, 30000); 
+                }
+
+                @Override
+                public void onPageFinished(WebView v, String url) {
+                    mHandler.removeCallbacks(timeoutRunnable);
+                    if (url.equals("about:blank")) return;
+
+                    injectStealthScripts(v);
+
+                    if (url.contains("google.com") || url.contains("bing.com")) {
+                        injectFakeHistory(v); 
+                        mHandler.postDelayed(() -> {
+                                String targetUrl = "";
+                                if(linkIn != null) targetUrl = linkIn.getText().toString().trim();
+                                if(targetUrl.isEmpty()) targetUrl = "https://www.google.com";
+                                
+                                Map<String, String> headers = new HashMap<>();
+                                headers.put("X-Requested-With", ""); 
+                                headers.put("Referer", "https://www.google.com/");
+                                
+                                if (v != null) v.loadUrl(targetUrl, headers);
+                                mHandler.post(() -> aiStatusView.setText("🚀 Moved to Target"));
+                        }, 4000); 
+                    } else {
+                        checkBanStatus(v, url);
+                    }
+                }
+
+                @Override
+                public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
+                    if (req.isForMainFrame()) {
+                        mHandler.removeCallbacks(timeoutRunnable);
+                        v.loadUrl("about:blank");
+                        handleFailure(v, "Conn Error");
+                    }
                 }
                 
-                wv.setWebViewClient(new WebViewClient() {
-                    Runnable timeoutRunnable = () -> {
-                        if (wv != null) {
-                            mHandler.post(() -> aiStatusView.setText("⏳ Timeout -> Resetting..."));
-                            wv.stopLoading();
-                            handleFailure(wv, "Timeout");
-                        }
-                    };
+                @Override
+                public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                    handler.proceed(); 
+                }
+            });
 
-                    @Override
-                    public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                        mHandler.removeCallbacks(timeoutRunnable);
-                        mHandler.postDelayed(timeoutRunnable, 30000); 
-                    }
-
-                    @Override
-                    public void onPageFinished(WebView v, String url) {
-                        mHandler.removeCallbacks(timeoutRunnable);
-                        if (url.equals("about:blank")) return;
-
-                        injectStealthScripts(v);
-
-                        if (url.contains("google.com") || url.contains("bing.com")) {
-                            injectFakeHistory(v); 
-                            mHandler.postDelayed(() -> {
-                                 String targetUrl = "";
-                                 if(linkIn != null) targetUrl = linkIn.getText().toString().trim();
-                                 if(targetUrl.isEmpty()) targetUrl = "https://www.google.com";
-                                 
-                                 Map<String, String> headers = new HashMap<>();
-                                 headers.put("X-Requested-With", ""); 
-                                 headers.put("Referer", "https://www.google.com/");
-                                 
-                                 if (v != null) v.loadUrl(targetUrl, headers);
-                                 mHandler.post(() -> aiStatusView.setText("🚀 Moved to Target"));
-                            }, 4000); 
-                        } else {
-                            checkBanStatus(v, url);
-                        }
-                    }
-
-                    @Override
-                    public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
-                        if (req.isForMainFrame()) {
-                            mHandler.removeCallbacks(timeoutRunnable);
-                            v.loadUrl("about:blank");
-                            handleFailure(v, "Conn Error");
-                        }
-                    }
-                    
-                    @Override
-                    public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
-                        handler.proceed(); 
-                    }
-                });
-
-                return wv;
-            }
         } catch (Exception e) {
-            // فشل الإنشاء
+             aiStatusView.setText("HW Error: " + e.getMessage());
         }
-        return null;
     }
 
-    // === باقي الكود كما هو للحفاظ على الميزات ===
+    // === دوال الذكاء ===
     private void injectFakeHistory(WebView v) {
         String js = "(function() { try { localStorage.setItem('user_consent', 'true'); document.cookie = 'CONSENT=YES+US.en+202201; path=/; domain=.google.com'; } catch(e) {} })();";
         v.evaluateJavascript(js, null);
@@ -275,7 +249,7 @@ public class MainActivity extends Activity {
 
     private void toggleSystem() {
         isRunning = !isRunning;
-        if (controlBtn != null) controlBtn.setText(isRunning ? "🛑 STOP" : "🚀 LAUNCH ZENITH V11");
+        if (controlBtn != null) controlBtn.setText(isRunning ? "🛑 STOP" : "🚀 LAUNCH ZENITH V12");
         
         if (isRunning) {
             if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
@@ -286,7 +260,7 @@ public class MainActivity extends Activity {
             if (web3 != null) { mHandler.postDelayed(() -> runSingleBot(web3), 4000); atLeastOneRunning = true; }
             
             if (!atLeastOneRunning) {
-                Toast.makeText(this, "⚠️ WebViews Failed - Mode: PROXY ONLY", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "⚠️ HW WebViews Failed!", Toast.LENGTH_SHORT).show();
             }
         } else {
             if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
@@ -324,15 +298,10 @@ public class MainActivity extends Activity {
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
             };
             
-            // تحقق أخير لتجنب الانهيار
-            try {
-                if (wv != null && wv.getSettings() != null) {
-                    wv.getSettings().setUserAgentString(agents[rnd.nextInt(agents.length)]);
-                    wv.loadUrl("https://www.google.com"); 
-                }
-            } catch (Exception ex) {
-                 // إذا فشل الإعداد، نحاول التحميل بدونه
-                 wv.loadUrl("https://www.google.com");
+            // بما أن المتصفح موجود مسبقاً، لن يكون null أبداً
+            if (wv.getSettings() != null) {
+                wv.getSettings().setUserAgentString(agents[rnd.nextInt(agents.length)]);
+                wv.loadUrl("https://www.google.com"); 
             }
             
             totalJumps++;
@@ -424,4 +393,4 @@ public class MainActivity extends Activity {
         scrapExec.shutdownNow();
         validExec.shutdownNow();
     }
-}
+                            }
