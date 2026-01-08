@@ -30,7 +30,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-    // === الواجهة ===
+    // === تعريف العناصر ===
     private WebView web1, web2, web3;
     private Button controlBtn;
     private EditText linkIn;
@@ -54,9 +54,12 @@ public class MainActivity extends Activity {
         
         try {
             setContentView(R.layout.activity_main);
+            
+            // الحماية من توقف المعالج
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::SmartCookies");
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::FixCrash");
 
+            // ربط العناصر
             dashView = findViewById(R.id.dashboardView);
             aiStatusView = findViewById(R.id.aiStatusView);
             serverCountView = findViewById(R.id.serverCountView);
@@ -64,54 +67,66 @@ public class MainActivity extends Activity {
             controlBtn = findViewById(R.id.controlButton);
             webContainer = findViewById(R.id.webContainer);
 
+            // التحقق من وجود الحاوية (لمنع الانهيار عند البدء)
             if (webContainer != null) {
-                // السماح بالكوكيز ضروري جداً لهذه الخطة
+                // تفعيل الكوكيز للذكاء الاصطناعي
                 CookieManager.getInstance().setAcceptCookie(true);
                 CookieManager.getInstance().setAcceptThirdPartyCookies(null, true);
                 
-                web1 = initSmartWeb(); 
-                web2 = initSmartWeb(); 
-                web3 = initSmartWeb();
+                // تهيئة المتصفحات بأمان
+                web1 = initSafeWeb(); 
+                web2 = initSafeWeb(); 
+                web3 = initSafeWeb();
                 
-                setupTripleLayout();
-                startMegaScraping(); 
+                setupTripleLayout(); // إضافة المتصفحات للشاشة
+                startMegaScraping(); // تشغيل الوحش
                 
                 controlBtn.setOnClickListener(v -> toggleSystem());
-                aiStatusView.setText("🍪 SMART COOKIES SYSTEM: READY");
+                aiStatusView.setText("🛡️ SYSTEM READY: NO CRASH");
+            } else {
+                Toast.makeText(this, "Error: webContainer Not Found!", Toast.LENGTH_LONG).show();
             }
 
         } catch (Exception e) {
-            Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Startup Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
     private void setupTripleLayout() {
-        if (webContainer == null || web1 == null) return;
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
-        web1.setLayoutParams(p); web2.setLayoutParams(p); web3.setLayoutParams(p);
-        webContainer.addView(web1); webContainer.addView(web2); webContainer.addView(web3);
+        if (webContainer == null) return;
+        // إضافة المتصفحات فقط إذا تم إنشاؤها بنجاح
+        if (web1 != null) addWebToLayout(web1);
+        if (web2 != null) addWebToLayout(web2);
+        if (web3 != null) addWebToLayout(web3);
     }
 
-    // === المتصفح الذكي (Smart Web) ===
-    private WebView initSmartWeb() {
+    private void addWebToLayout(WebView wv) {
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
+        wv.setLayoutParams(p);
+        webContainer.addView(wv);
+    }
+
+    // === المتصفح الآمن (Safe Web) ===
+    private WebView initSafeWeb() {
         WebView wv = new WebView(this);
         WebSettings s = wv.getSettings();
         
         s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true); // تفعيل التخزين المحلي لزرع البيانات
+        s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
-        
-        // إعدادات التخفي والحماية
-        s.setAllowFileAccess(false);
+        s.setAllowFileAccess(false); // عزل تام
         s.setGeolocationEnabled(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         s.setLoadsImagesAutomatically(true);
 
         wv.setWebViewClient(new WebViewClient() {
+            // مؤقت 35 ثانية
             Runnable timeoutRunnable = () -> {
-                mHandler.post(() -> aiStatusView.setText("⏳ Timeout -> Resetting..."));
-                wv.stopLoading();
-                handleFailure(wv, "Timeout");
+                if (wv != null) {
+                    mHandler.post(() -> aiStatusView.setText("⏳ Timeout -> Resetting..."));
+                    wv.stopLoading();
+                    handleFailure(wv, "Timeout");
+                }
             };
 
             @Override
@@ -125,28 +140,26 @@ public class MainActivity extends Activity {
                 mHandler.removeCallbacks(timeoutRunnable);
                 if (url.equals("about:blank")) return;
 
-                // 1. تزوير البصمة (WebGL & Headers)
+                // حقن كود التخفي (WebGL Spoofing)
                 injectStealthScripts(v);
 
-                // 2. منطق الإحماء (Warm-up Logic)
-                // إذا كنا في صفحة جوجل (الإحماء)، نزرع البيانات ثم نذهب للهدف
+                // منطق الإحماء (Google Warm-up)
                 if (url.contains("google.com") || url.contains("bing.com")) {
-                    injectFakeHistory(v); // زرع بيانات مزيفة
+                    injectFakeHistory(v); 
                     mHandler.postDelayed(() -> {
-                         // الانتقال للرابط الأصلي (Target)
                          String targetUrl = linkIn.getText().toString().trim();
                          if(targetUrl.isEmpty()) targetUrl = "https://www.google.com";
                          
-                         // إخفاء الهيدر عند الانتقال للهدف
+                         // الانتقال للهدف مع إخفاء الهيدر
                          Map<String, String> headers = new HashMap<>();
-                         headers.put("X-Requested-With", "");
-                         headers.put("Referer", "https://www.google.com/"); // خدعة قوية: المصدر هو جوجل
-                         v.loadUrl(targetUrl, headers);
+                         headers.put("X-Requested-With", ""); 
+                         headers.put("Referer", "https://www.google.com/");
                          
-                         mHandler.post(() -> aiStatusView.setText("🚀 Moved to Target from Warm-up"));
-                    }, 4000); // انتظار 4 ثواني في جوجل لكسب الثقة
+                         if (v != null) v.loadUrl(targetUrl, headers);
+                         
+                         mHandler.post(() -> aiStatusView.setText("🚀 Moved to Target"));
+                    }, 4000); 
                 } else {
-                    // نحن في صفحة الهدف الآن
                     checkBanStatus(v, url);
                 }
             }
@@ -155,6 +168,7 @@ public class MainActivity extends Activity {
             public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
                 if (req.isForMainFrame()) {
                     mHandler.removeCallbacks(timeoutRunnable);
+                    v.loadUrl("about:blank"); // إخفاء الخطأ فوراً
                     handleFailure(v, "Conn Error");
                 }
             }
@@ -167,31 +181,19 @@ public class MainActivity extends Activity {
         return wv;
     }
 
-    // === حقن "تاريخ مزيف" وكوكيز وهمية (الميزة الجديدة) ===
+    // === حقن البيانات (Smart Cookies) ===
     private void injectFakeHistory(WebView v) {
-        String js = 
-            "(function() {" +
-            "   try {" +
-            "       // زرع بيانات في التخزين المحلي لتبدو كمستخدم قديم\n" +
-            "       localStorage.setItem('user_consent', 'true');" +
-            "       localStorage.setItem('theme', 'dark');" +
-            "       localStorage.setItem('session_id', '" + rnd.nextLong() + "');" +
-            "       localStorage.setItem('last_visit', new Date().getTime().toString());" +
-            "       // إنشاء كوكيز وهمية آمنة\n" +
-            "       document.cookie = 'CONSENT=YES+US.en+202201; path=/; domain=.google.com';" +
-            "       document.cookie = 'NID=" + rnd.nextInt(1000) + "=variant; path=/; domain=.google.com';" +
-            "   } catch(e) {}" +
-            "})();";
+        String js = "(function() { try { localStorage.setItem('user_consent', 'true'); document.cookie = 'CONSENT=YES+US.en+202201; path=/; domain=.google.com'; } catch(e) {} })();";
         v.evaluateJavascript(js, null);
     }
 
+    // === حقن التخفي (Titanium Stealth) ===
     private void injectStealthScripts(WebView v) {
         String js = 
             "(function() {" +
             "   try {" +
             "       Object.defineProperty(navigator, 'webdriver', {get: () => undefined});" +
             "       Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});" +
-            "       Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});" +
             "       var getParameter = WebGLRenderingContext.prototype.getParameter;" +
             "       WebGLRenderingContext.prototype.getParameter = function(parameter) {" +
             "           if (parameter === 37445) return 'Intel Inc.';" + 
@@ -217,18 +219,21 @@ public class MainActivity extends Activity {
                 if (value != null && value.contains("BLOCKED")) {
                     handleFailure(v, "Banned"); 
                 } else {
-                    v.setTag(0); 
+                    if (v != null) v.setTag(0); 
                     simulateHumanBehavior(v);
-                    mHandler.post(() -> aiStatusView.setText("🟢 $$$ Success: " + url));
+                    mHandler.post(() -> aiStatusView.setText("🟢 Success: " + url));
                 }
             }
         );
     }
 
     private void handleFailure(WebView v, String reason) {
-        mHandler.post(() -> aiStatusView.setText("⛔ " + reason + " -> Cleaning..."));
+        if (v == null) return; // حماية
+        mHandler.post(() -> aiStatusView.setText("⛔ " + reason + " -> Skipping..."));
+        
         v.stopLoading();
         v.loadUrl("about:blank");
+        
         mHandler.postDelayed(() -> runSingleBot(v), 1500);
     }
 
@@ -244,20 +249,25 @@ public class MainActivity extends Activity {
 
     private void toggleSystem() {
         isRunning = !isRunning;
-        controlBtn.setText(isRunning ? "🛑 STOP" : "🚀 START SMART BOT");
+        controlBtn.setText(isRunning ? "🛑 STOP" : "🚀 LAUNCH ZENITH V5");
         
         if (isRunning) {
             if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
-            runSingleBot(web1);
-            mHandler.postDelayed(() -> runSingleBot(web2), 2500);
-            mHandler.postDelayed(() -> runSingleBot(web3), 5000);
+            // تشغيل تدريجي آمن
+            if (web1 != null) runSingleBot(web1);
+            if (web2 != null) mHandler.postDelayed(() -> runSingleBot(web2), 2500);
+            if (web3 != null) mHandler.postDelayed(() -> runSingleBot(web3), 5000);
         } else {
             if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         }
     }
 
+    // === المحرك الرئيسي (هنا كان الخطأ وتم إصلاحه) ===
     private void runSingleBot(WebView wv) {
+        // 🔥 الحماية القصوى: إصلاح الخطأ الظاهر في الصورة
+        // إذا كان المتصفح غير موجود (null)، توقف فوراً ولا تكمل
         if (wv == null) return;
+        
         wv.setTag(0);
 
         if (!isRunning || PROXY_POOL.isEmpty()) {
@@ -266,7 +276,7 @@ public class MainActivity extends Activity {
         }
 
         try {
-            // 1. تنظيف شامل للبقايا القديمة (للبدء بهوية جديدة نظيفة)
+            // تنظيف البيانات
             CookieManager.getInstance().removeAllCookies(null);
             WebStorage.getInstance().deleteAllData();
             wv.clearCache(true);
@@ -282,22 +292,24 @@ public class MainActivity extends Activity {
                 } catch (Exception e) {}
             }
 
-            // هوية عشوائية
             String[] agents = {
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
             };
-            wv.getSettings().setUserAgentString(agents[rnd.nextInt(agents.length)]);
             
-            // === التعديل الجوهري: ابدأ بـ Google بدلاً من الرابط المباشر ===
-            // هذا ما سيخلق "الكوكيز الحقيقية" قبل الهجوم
+            // حماية إضافية عند استدعاء getSettings
+            if (wv.getSettings() != null) {
+                wv.getSettings().setUserAgentString(agents[rnd.nextInt(agents.length)]);
+            }
+            
+            // البدء بجوجل (Smart Cookies Strategy)
             wv.loadUrl("https://www.google.com"); 
             
             totalJumps++;
-            // نزيد الوقت قليلاً لأننا نمر بمرحلتين (جوجل + الموقع)
             mHandler.postDelayed(() -> runSingleBot(wv), (40 + rnd.nextInt(20)) * 1000);
 
         } catch (Exception e) {
+            // منع الانهيار وإعادة المحاولة
             mHandler.postDelayed(() -> runSingleBot(wv), 2000);
         }
     }
@@ -305,7 +317,7 @@ public class MainActivity extends Activity {
     private void updateUI() {
         mHandler.post(() -> {
             serverCountView.setText("🌐 Proxies: " + PROXY_POOL.size());
-            dashView.setText("💰 Hits: " + totalJumps);
+            dashView.setText("💰 Jumps: " + totalJumps);
         });
     }
 
@@ -365,4 +377,4 @@ public class MainActivity extends Activity {
         super.onDestroy();
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
     }
-                           }
+                    }
