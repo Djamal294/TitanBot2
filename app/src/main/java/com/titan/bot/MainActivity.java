@@ -5,17 +5,29 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
-import android.webkit.*;
+// استيرادات الويب الضرورية
+import android.webkit.CookieManager;
+import android.webkit.SslErrorHandler; // تم إضافته صراحة
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
+import android.webkit.WebStorage;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import androidx.webkit.ProxyConfig;
 import androidx.webkit.ProxyController;
 import androidx.webkit.WebViewFeature;
+// استيراد أخطاء SSL (سبب المشكلة السابقة)
+import android.net.http.SslError; // 🔥 هذا هو السطر المفقود
+
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.view.ViewGroup;
 import android.widget.Toast;
-import android.view.WindowManager; // إضافة مهمة
+import android.view.WindowManager;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -53,7 +65,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         
         try {
-            // 1. تفعيل تسريع الهاردوير (لحل مشكلة حظر WebViews في بعض الهواتف)
+            // تفعيل تسريع الهاردوير
             getWindow().setFlags(
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
@@ -61,10 +73,8 @@ public class MainActivity extends Activity {
 
             setContentView(R.layout.activity_main);
             
-            // 2. تشغيل جلب الخوادم فوراً
             startMegaScraping(); 
 
-            // 3. ربط العناصر
             dashView = findViewById(R.id.dashboardView);
             aiStatusView = findViewById(R.id.aiStatusView);
             serverCountView = findViewById(R.id.serverCountView);
@@ -72,16 +82,14 @@ public class MainActivity extends Activity {
             controlBtn = findViewById(R.id.controlButton);
             webContainer = findViewById(R.id.webContainer);
 
-            // 4. تفعيل الزر
             if (controlBtn != null) {
                 controlBtn.setOnClickListener(v -> toggleSystem());
             }
 
-            // 5. محاولة إنشاء المتصفحات (مع تأخير بسيط لضمان استقرار الواجهة)
             mHandler.postDelayed(this::forceInitWebViews, 1000);
 
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::V8Core");
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::V9Fix");
 
         } catch (Exception e) {
             Toast.makeText(this, "Ui Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -94,12 +102,11 @@ public class MainActivity extends Activity {
                 CookieManager.getInstance().setAcceptCookie(true);
                 CookieManager.getInstance().setAcceptThirdPartyCookies(null, true);
                 
-                // محاولة الإنشاء
                 web1 = createSafeWebView();
                 web2 = createSafeWebView();
                 web3 = createSafeWebView();
                 
-                aiStatusView.setText("🛡️ V8 ENGINE: READY");
+                aiStatusView.setText("🛡️ V9 COMPILER FIX: READY");
             }
         } catch (Exception e) {
             aiStatusView.setText("Init Error: " + e.getMessage());
@@ -108,7 +115,6 @@ public class MainActivity extends Activity {
 
     private WebView createSafeWebView() {
         try {
-            // استخدام التطبيق كـ Context قد يساعد في تجاوز بعض القيود
             WebView wv = new WebView(this);
             
             if (wv != null) {
@@ -171,9 +177,10 @@ public class MainActivity extends Activity {
                         }
                     }
                     
+                    // هنا كان الخطأ، الآن تم استيراد المكتبات وسيعمل بسلام
                     @Override
                     public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
-                        handler.proceed();
+                        handler.proceed(); // تجاهل أخطاء SSL للمواقع المشفرة
                     }
                 });
 
@@ -183,7 +190,6 @@ public class MainActivity extends Activity {
                 return wv;
             }
         } catch (Exception e) {
-            // فشل صامت (لن يظهر رسالة صفراء)
         }
         return null;
     }
@@ -253,19 +259,17 @@ public class MainActivity extends Activity {
 
     private void toggleSystem() {
         isRunning = !isRunning;
-        if (controlBtn != null) controlBtn.setText(isRunning ? "🛑 STOP" : "🚀 LAUNCH ZENITH V8");
+        if (controlBtn != null) controlBtn.setText(isRunning ? "🛑 STOP" : "🚀 LAUNCH ZENITH V9");
         
         if (isRunning) {
             if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
             
             boolean atLeastOneRunning = false;
-            // نشغل فقط المتصفحات السليمة
             if (web1 != null) { runSingleBot(web1); atLeastOneRunning = true; }
             if (web2 != null) { mHandler.postDelayed(() -> runSingleBot(web2), 2000); atLeastOneRunning = true; }
             if (web3 != null) { mHandler.postDelayed(() -> runSingleBot(web3), 4000); atLeastOneRunning = true; }
             
             if (!atLeastOneRunning) {
-                // في حال فشل المتصفحات، نستمر في العمل كخادم بروكسي فقط
                 Toast.makeText(this, "Note: Running in Proxy-Gathering Mode", Toast.LENGTH_SHORT).show();
             }
         } else {
@@ -274,8 +278,6 @@ public class MainActivity extends Activity {
     }
 
     private void runSingleBot(WebView wv) {
-        // 🔥🔥🔥 الإصلاح الجذري للخطأ الأصفر 🔥🔥🔥
-        // إذا كان المتصفح غير موجود، اخرج فوراً (لا تحاول استدعاء getSettings)
         if (wv == null) return;
         
         wv.setTag(0);
@@ -306,8 +308,6 @@ public class MainActivity extends Activity {
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
             };
             
-            // 🔥🔥🔥 فحص مزدوج آخر 🔥🔥🔥
-            // تأكد أن wv و wv.getSettings() ليسا null
             if (wv != null && wv.getSettings() != null) {
                 wv.getSettings().setUserAgentString(agents[rnd.nextInt(agents.length)]);
                 wv.loadUrl("https://www.google.com"); 
