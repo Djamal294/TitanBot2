@@ -22,7 +22,7 @@ import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.view.WindowManager;
-import android.view.View;
+import android.graphics.Bitmap; // مهم
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -41,15 +41,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-    // === الواجهة ===
     private WebView web1, web2, web3;
     private Button controlBtn;
     private EditText linkIn;
     private TextView dashView, aiStatusView, serverCountView;
     
-    // === المحركات ===
     private Handler mHandler = new Handler(Looper.getMainLooper());
-    // زدنا عدد خيوط البحث للتعامل مع المصادر الضخمة
     private ExecutorService scrapExec = Executors.newFixedThreadPool(100); 
     private ExecutorService validExec = Executors.newFixedThreadPool(2000); 
     
@@ -57,7 +54,6 @@ public class MainActivity extends Activity {
     private int totalJumps = 0;
     private boolean isRunning = false;
     
-    // === البيانات ===
     private CopyOnWriteArrayList<String> PROXY_POOL = new CopyOnWriteArrayList<>();
     private Set<String> BLACKLIST = Collections.synchronizedSet(new HashSet<>());
     private PowerManager.WakeLock wakeLock;
@@ -67,7 +63,6 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         
         try {
-            // تفعيل أقصى أداء للهاتف
             getWindow().setFlags(
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
@@ -75,8 +70,6 @@ public class MainActivity extends Activity {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
             setContentView(R.layout.activity_main);
-            
-            // تشغيل محرك البحث المطور (V17)
             startAdvancedScraping(); 
 
             dashView = findViewById(R.id.dashboardView);
@@ -96,77 +89,95 @@ public class MainActivity extends Activity {
             CookieManager.getInstance().setAcceptCookie(true);
             CookieManager.getInstance().setAcceptThirdPartyCookies(null, true);
             
-            if(web1 != null) setupSniperWebView(web1);
-            if(web2 != null) setupSniperWebView(web2);
-            if(web3 != null) setupSniperWebView(web3);
+            if(web1 != null) setupIronCageWebView(web1);
+            if(web2 != null) setupIronCageWebView(web2);
+            if(web3 != null) setupIronCageWebView(web3);
 
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::V17Sniper");
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TitanBot::V18IronCage");
             
-            aiStatusView.setText("🔥 V17: HIGH-QUALITY ENGINE STARTED");
+            aiStatusView.setText("🛡️ V18: IRON CAGE ACTIVE");
 
         } catch (Exception e) {
             Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
-    private void setupSniperWebView(WebView wv) {
+    // 🔥 إعدادات القفص الحديدي 🔥
+    private void setupIronCageWebView(WebView wv) {
         if (wv == null) return;
         try {
             WebSettings s = wv.getSettings();
             s.setJavaScriptEnabled(true);
             s.setDomStorageEnabled(true);
-            s.setDatabaseEnabled(true);
-            // تقليل استهلاك البيانات لتسريع التحميل
-            s.setBlockNetworkImage(false); 
-            s.setLoadsImagesAutomatically(true); 
+            s.setSupportMultipleWindows(false); // ممنوع النوافذ الجديدة
+            s.setJavaScriptCanOpenWindowsAutomatically(false); // ممنوع فتح روابط تلقائياً
             s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
             
-            // منع النوافذ المنبثقة
-            s.setSupportMultipleWindows(false);
-            
             wv.setWebViewClient(new WebViewClient() {
+                
+                // 🔒 هذا الكود هو الحارس الذي يمنع الخروج لكروم
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                    return false; // إجبار الرابط داخل التطبيق
+                    // إذا كان الرابط يبدأ بـ http أو https، افتحه داخل التطبيق بالقوة
+                    if (url.startsWith("http") || url.startsWith("https")) {
+                        view.loadUrl(url);
+                        return true; 
+                    }
+                    // إذا كان رابط تطبيق خارجي (مثل market://)، امنعه
+                    return true; 
+                }
+
+                @Override
+                public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                    // 🕵️‍♂️ كاشف الحظر المبكر
+                    if (url.contains("google.com/sorry") || url.contains("captcha")) {
+                        handleBannedProxy(view);
+                    }
                 }
 
                 @Override
                 public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
                     if (req.isForMainFrame()) {
-                        // إذا فشل الخادم، احظره فوراً وانتقل للتالي
-                        String proxy = (String) v.getTag();
-                        if (proxy != null) BLACKLIST.add(proxy);
-                        
-                        v.loadUrl("about:blank");
-                        if (isRunning) mHandler.postDelayed(() -> runSingleBot(v), 100); // انتقال فوري
+                        handleBannedProxy(v);
                     }
-                }
-                
-                @Override
-                public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
-                    handler.proceed(); 
                 }
 
                 @Override
                 public void onPageFinished(WebView v, String url) {
                     if (url.equals("about:blank")) return;
 
-                    injectAntiFingerprint(v);
+                    // 🕵️‍♂️ كاشف الحظر المتأخر
+                    if (url.contains("google.com/sorry") || url.contains("recaptcha")) {
+                        handleBannedProxy(v);
+                        return;
+                    }
+
+                    injectStealthScripts(v);
 
                     if (url.contains("google.com")) {
                         injectGoogleCookies(v);
-                        // الانتقال للرابط الهدف بسرعة
-                        mHandler.postDelayed(() -> navigateToTarget(v), 1000); 
+                        mHandler.postDelayed(() -> navigateToTarget(v), 1200); 
                     } else {
-                        // وصلنا للهدف
-                        mHandler.post(() -> aiStatusView.setText("✅ HIT: " + PROXY_POOL.size() + " IPs Left"));
-                        simulateInteraction(v);
+                        mHandler.post(() -> aiStatusView.setText("🟢 TARGET HIT"));
+                        simulateHumanBehavior(v);
                     }
                 }
             });
 
         } catch (Exception e) {}
+    }
+
+    // دالة التعامل مع البروكسي المحظور (لكي لا ترى صفحة الخطأ)
+    private void handleBannedProxy(WebView v) {
+        String badProxy = (String) v.getTag();
+        if (badProxy != null) {
+            BLACKLIST.add(badProxy);
+            mHandler.post(() -> aiStatusView.setText("⛔ Banned/Captcha Detected -> Skipping"));
+        }
+        v.stopLoading();
+        v.loadUrl("about:blank");
+        if (isRunning) mHandler.postDelayed(() -> runSingleBot(v), 200); // تغيير فوري
     }
 
     private void navigateToTarget(WebView v) {
@@ -181,46 +192,32 @@ public class MainActivity extends Activity {
         }
     }
 
-    // === تقنيات التخفي ===
     private void injectGoogleCookies(WebView v) {
         String js = "(function() { document.cookie = 'CONSENT=YES+US.en+202201; path=/; domain=.google.com'; })();";
         v.evaluateJavascript(js, null);
     }
 
-    private void injectAntiFingerprint(WebView v) {
-        // تمويه WebGL و Canvas ليبدو كهاتف حقيقي مختلف في كل مرة
-        String js = 
-            "(function() {" +
-            "   try {" +
-            "       Object.defineProperty(navigator, 'webdriver', {get: () => undefined});" +
-            "       var noise = Math.floor(Math.random() * 100);" +
-            "       var getParameter = WebGLRenderingContext.prototype.getParameter;" +
-            "       WebGLRenderingContext.prototype.getParameter = function(parameter) {" +
-            "           if (parameter === 37445) return 'Google Inc.';" + // Unmasked Vendor
-            "           if (parameter === 37446) return 'Google SwiftShader';" + // Unmasked Renderer
-            "           return getParameter(parameter);" +
-            "       };" +
-            "   } catch(e) {}" +
-            "})();";
+    private void injectStealthScripts(WebView v) {
+        String js = "(function() { try { Object.defineProperty(navigator, 'webdriver', {get: () => undefined}); } catch(e) {} })();";
         v.evaluateJavascript(js, null);
     }
 
-    private void simulateInteraction(WebView v) {
+    private void simulateHumanBehavior(WebView v) {
         v.evaluateJavascript("(function(){" +
-            "   setInterval(function(){ window.scrollBy(0, 50); }, 200);" +
-            "   setTimeout(function(){ document.body.click(); }, 2000);" +
+            "   setInterval(function(){ window.scrollBy(0, 40); }, 300);" +
+            "   setTimeout(function(){ document.body.click(); }, 2500);" +
             "})()", null);
     }
 
     private void toggleSystem() {
         isRunning = !isRunning;
-        if (controlBtn != null) controlBtn.setText(isRunning ? "🛑 STOP" : "🚀 LAUNCH V17");
+        if (controlBtn != null) controlBtn.setText(isRunning ? "🛑 STOP" : "🚀 LAUNCH V18");
         
         if (isRunning) {
             if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
             if (web1 != null) runSingleBot(web1);
-            if (web2 != null) mHandler.postDelayed(() -> runSingleBot(web2), 1000);
-            if (web3 != null) mHandler.postDelayed(() -> runSingleBot(web3), 2000);
+            if (web2 != null) mHandler.postDelayed(() -> runSingleBot(web2), 1500);
+            if (web3 != null) mHandler.postDelayed(() -> runSingleBot(web3), 3000);
         } else {
             if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         }
@@ -239,11 +236,9 @@ public class MainActivity extends Activity {
             WebStorage.getInstance().deleteAllData();
             wv.clearHistory();
 
-            // اختيار عشوائي ذكي
             int index = rnd.nextInt(PROXY_POOL.size());
             String proxy = PROXY_POOL.get(index);
 
-            // تحقق سريع من القائمة السوداء
             if (BLACKLIST.contains(proxy)) {
                 PROXY_POOL.remove(index);
                 runSingleBot(wv);
@@ -261,18 +256,15 @@ public class MainActivity extends Activity {
             }
             
             if (wv.getSettings() != null) {
-                // تدوير User-Agent ليبدو كأجهزة مختلفة
                 String[] agents = {
-                    "Mozilla/5.0 (Linux; Android 13; SM-S908B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
-                    "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Mobile Safari/537.36",
-                    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
+                    "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+                    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
                 };
                 wv.getSettings().setUserAgentString(agents[rnd.nextInt(agents.length)]);
                 wv.loadUrl("https://www.google.com"); 
             }
             
             totalJumps++;
-            // تقليل وقت الانتظار لزيادة عدد الزيارات
             mHandler.postDelayed(() -> runSingleBot(wv), (20 + rnd.nextInt(10)) * 1000);
 
         } catch (Exception e) {
@@ -282,52 +274,36 @@ public class MainActivity extends Activity {
 
     private void updateUI() {
         mHandler.post(() -> {
-            serverCountView.setText("💎 Elite IPs: " + PROXY_POOL.size());
-            dashView.setText("⚡ Jumps: " + totalJumps);
+            serverCountView.setText("💎 Clean IPs: " + PROXY_POOL.size());
+            dashView.setText("⚡ Hits: " + totalJumps);
         });
     }
 
-    // === محرك البحث المتقدم (Advanced Scraping Engine) ===
     private void startAdvancedScraping() {
-        // مصادر API متنوعة (HTTP, SOCKS4, SOCKS5) لضمان عدم التكرار
+        // مصادر مختارة بعناية لتقليل الحظر
         String[] sources = {
-            // Proxyscrape API (High Volume)
-            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=5000&country=all&ssl=all&anonymity=elite",
-            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks4&timeout=5000&country=all",
-            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5&timeout=5000&country=all",
-            // Geonode Free List (Quality)
-            "https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked&sort_type=desc&protocols=http%2Chttps",
-            // GitHub Raw Lists (The Huge Ones)
+            "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=4000&country=all&ssl=all&anonymity=elite",
             "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
-            "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks4.txt",
-            "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt",
-            "https://raw.githubusercontent.com/prxchk/proxy-list/main/http.txt",
-            "https://raw.githubusercontent.com/Zaeem20/FREE_PROXIES_LIST/master/http.txt",
-            "https://raw.githubusercontent.com/Anonym0usWork1220/Free-Proxies/main/proxy_files/http_proxies.txt"
+            "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+            "https://raw.githubusercontent.com/prxchk/proxy-list/main/http.txt"
         };
 
         for (String url : sources) {
             scrapExec.execute(() -> {
                 while (true) {
                     try {
-                        // تنظيف الذاكرة إذا امتلأت
-                        if (PROXY_POOL.size() > 8000) PROXY_POOL.clear();
+                        if (PROXY_POOL.size() > 6000) PROXY_POOL.clear();
                         
                         URL u = new URL(url);
                         HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-                        conn.setConnectTimeout(10000); 
+                        conn.setConnectTimeout(8000); 
                         BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                         String l;
                         while ((l = r.readLine()) != null) { 
-                            // تنظيف السطر واستخراج IP:PORT فقط
-                            if (l.contains(":")) {
-                                // استخراج البروكسي من JSON إذا لزم الأمر
-                                String cleanProxy = extractProxy(l);
-                                if(cleanProxy != null) validateEliteProxy(cleanProxy); 
-                            }
+                            if (l.contains(":")) validateEliteProxy(l.trim()); 
                         }
                         r.close();
-                        Thread.sleep(300000); // تحديث كل 5 دقائق
+                        Thread.sleep(300000); 
                     } catch (Exception e) {
                         try { Thread.sleep(30000); } catch (Exception ex) {}
                     }
@@ -335,40 +311,22 @@ public class MainActivity extends Activity {
             });
         }
     }
-    
-    // دالة مساعدة لاستخراج البروكسي من النصوص المعقدة
-    private String extractProxy(String line) {
-        try {
-            // بحث بسيط عن نمط IP:PORT
-            java.util.regex.Pattern p = java.util.regex.Pattern.compile("(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}:\\d+)");
-            java.util.regex.Matcher m = p.matcher(line);
-            if (m.find()) {
-                return m.group(1);
-            }
-        } catch (Exception e) {}
-        return null;
-    }
 
-    // === الفلتر الصارم (The Gatekeeper) ===
     private void validateEliteProxy(String a) {
         if (BLACKLIST.contains(a)) return;
         
         validExec.execute(() -> {
             try {
                 String[] p = a.split(":");
-                long startTime = System.currentTimeMillis();
-                
                 HttpURLConnection c = (HttpURLConnection) new URL("http://www.google.com/generate_204").openConnection(
                     new Proxy(Proxy.Type.HTTP, new InetSocketAddress(p[0], Integer.parseInt(p[1])))
                 );
                 
-                // 🔥 الشرط الصارم: يجب أن يستجيب خلال 3 ثوانٍ فقط 🔥
-                c.setConnectTimeout(3000); 
-                c.setReadTimeout(3000);
+                c.setConnectTimeout(4000); 
+                c.setReadTimeout(4000);
                 
-                if (c.getResponseCode() == 204) { // 204 تعني اتصال ناجح وسريع جداً
-                    long latency = System.currentTimeMillis() - startTime;
-                    if (latency < 3000 && !PROXY_POOL.contains(a)) {
+                if (c.getResponseCode() == 204) { 
+                    if (!PROXY_POOL.contains(a)) {
                         PROXY_POOL.add(a);
                         updateUI();
                     }
@@ -376,4 +334,4 @@ public class MainActivity extends Activity {
             } catch (Exception e) {}
         });
     }
-        }
+                }
